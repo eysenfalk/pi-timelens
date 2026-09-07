@@ -15,7 +15,7 @@ Local timing and token observability for the [Pi coding agent](https://github.co
 Pi TimeLens makes agent latency legible. It measures assistant TTFT and streaming time, shows provider-reported token categories and output speed, separates parallel tool wall time from cumulative work, and closes each request with one coherent total. Everything stays local, display-only, and outside model context.
 
 > [!IMPORTANT]
-> This is the reviewed `1.0.0` release candidate. npm and GitHub publication remain gated; the install command below becomes available with the public release.
+> This public repository contains the reviewed `1.0.0` release candidate. npm publication remains separately gated; the registry install command below becomes available with that release.
 
 ## Install
 

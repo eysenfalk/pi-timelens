@@ -1,6 +1,6 @@
 # Release evaluation — 1.0.0-rc.0
 
-Evaluation date: 2026-09-07. Status: local `1.0.0-rc.0` candidate; GitHub and npm publication have not been authorized or performed.
+Evaluation date: 2026-09-07. Status: public GitHub `1.0.0-rc.0` source candidate; npm publication was not authorized and has not been performed.
 
 ## Scope and invariants
 
@@ -14,8 +14,9 @@ Pi TimeLens packages the already deployed Message Timing V2 behavior as a standa
 - `npm run smoke:packed`: packed `pi-timelens-1.0.0-rc.0.tgz`, extracted the artifact, installed it with Pi's `install` command in a temporary offline home, loaded fresh Pi 0.85.1 RPC, and verified `/timing`.
 - Real Pi 0.85.1 TUI at 120 columns: passed one parallel two-tool batch, source ordering, assistant usage, `◆ Total`, and `/timing summary`.
 - Real Pi 0.85.1 TUI at 60 columns: exposed and then verified a fixed semantic-wrap defect; TTFT, `tok/s`, token usage, singular `1 step`, and `0 tools` remain complete rather than clipped.
-- `npm pack --json --ignore-scripts`: 21 files, 172,484 bytes unpacked, no runtime dependencies or install hooks.
+- `npm pack --json --ignore-scripts`: 21 files, 172,355 bytes unpacked, no runtime dependencies or install hooks.
 - Independent read-only reviews concluded `RELEASE`, `SHOWCASE-READY`, and visual `READY` after focused re-review of the responsive hero, prerelease truthfulness, npm trust bootstrap, and release-workflow compatibility fixes.
+- Public GitHub CI passed both Node 22 and Node 24 jobs at commit `8bb4889`; CodeQL passed after the repository became public. Private vulnerability reporting, secret scanning with push protection, read-only default workflow permissions, protected `main`, and the approval-gated `npm` environment were enabled and verified.
 
 ## Cost and performance
 
@@ -38,14 +39,12 @@ The active harness extension has not been replaced or modified by this candidate
 
 ## Rollback
 
-Before publication, rollback is deletion of this isolated repository; the active harness remains unchanged. After publication, npm versions are immutable: deprecate a defective version, publish a patch, and let users pin or reinstall the last known-good version. Never rewrite release tags or reuse versions.
+The GitHub repository can be archived if the source launch is withdrawn; the active harness remains unchanged. After npm publication, versions are immutable: deprecate a defective version, publish a patch, and let users pin or reinstall the last known-good version. Never rewrite release tags or reuse versions.
 
 ## Remaining external gates
 
-- GitHub Actions execution in the eventual public repository;
-- maintainer approval for repository creation and npm publication;
-- public-only GitHub private vulnerability reporting enabled and verified before announcement;
-- protected `npm` environment enabled and verified;
+- optional GitHub social-preview upload, which is available only through repository settings;
+- separate maintainer approval and authentication for every npm registry mutation;
 - documented interactive `1.0.0-rc.0` bootstrap, followed immediately by npm Trusted Publishing configuration and verification;
 - reviewed stable `1.0.0` published only through OIDC, with provenance verified;
 - clean-registry `pi install npm:pi-timelens@1.0.0` and Pi gallery verification.

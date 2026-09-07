@@ -16,7 +16,7 @@ This policy applies in repository issues, pull requests, discussions, reviews, r
 
 Maintainers may edit or remove contributions, comments, commits, code, issues, or other material that violates this policy, and may temporarily or permanently restrict participation. Enforcement decisions should be proportionate, private where possible, and documented for maintainers.
 
-Release and public announcement are blocked until a private maintainer reporting channel is enabled and documented. Once available, use that private route for confidential conduct reports. Do not post sensitive details publicly. Retaliation against reporters is prohibited.
+Use the repository's enabled private vulnerability-reporting route for confidential conduct reports and identify the report as a conduct matter. Do not post sensitive details publicly. Retaliation against reporters is prohibited.
 
 ## Attribution
 

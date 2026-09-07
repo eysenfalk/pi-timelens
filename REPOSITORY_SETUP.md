@@ -1,30 +1,25 @@
 # Repository setup checklist
 
-This file records maintainer-only settings that cannot be enforced from source. Create the repository privately and complete every available launch control. When making it public, immediately enable and verify the public-only private-reporting control before announcement or npm publication.
+Repository controls that cannot be enforced from source are recorded here for auditability.
 
-## GitHub
+## GitHub — verified 2026-09-07
 
-- Repository: `eysenfalk/pi-timelens`
-- Description: `Every turn. Every tool. Every token. Local timing and token observability for Pi.`
-- Homepage: `https://www.npmjs.com/package/pi-timelens`
-- Topics: `pi-package`, `pi-coding-agent`, `developer-tools`, `observability`, `timing`, `telemetry`, `tokens`, `ttft`, `terminal`, `typescript`
-- Default branch: `main`
-- Enable Issues, Discussions, private vulnerability reporting, Dependabot alerts, Dependabot security updates, secret scanning, and automatic deletion of merged branches.
-- Immediately after changing visibility to public, verify private vulnerability reporting as the documented confidential security and conduct channel before announcement or npm publication.
-- Disable Wiki unless it gains a distinct purpose; versioned documentation belongs in the repository.
-- Use `media/gallery.webp` as the social preview.
+- [x] Public repository: `eysenfalk/pi-timelens`.
+- [x] Description and topics configured for Pi, timing, observability, tokens, TTFT, terminal, and TypeScript discovery.
+- [x] Issues and Discussions enabled; Wiki disabled; merged branches deleted automatically.
+- [x] Private vulnerability reporting enabled and documented as the confidential security and conduct channel.
+- [x] Dependabot alerts and security updates enabled.
+- [x] Secret scanning and push protection enabled.
+- [x] Default workflow-token permission reduced to read-only.
+- [x] CI passed on Node 22 and Node 24; CodeQL passed after public activation.
+- [x] `main` requires current CI plus CodeQL checks, resolved conversations, one code-owner review for non-maintainer changes, linear history, and no force push or deletion. Maintainers retain an audited emergency bypass.
+- [x] `npm` deployment environment created with maintainer approval.
+- [ ] Upload `media/gallery.webp` as the social preview through GitHub's repository settings; no supported API exposes this control.
+- [ ] Set the repository homepage to the npm package after stable publication.
 
-Protect `main` with a ruleset that:
+## npm — explicitly deferred
 
-- requires pull requests for non-maintainer changes;
-- requires the Node 22, Node 24, and CodeQL checks;
-- requires conversations to be resolved;
-- blocks force pushes and branch deletion;
-- permits maintainers to ship urgent security fixes without weakening audit history.
-
-Create an `npm` deployment environment with maintainer approval before release jobs can run. Keep stable npm publication disabled until every release-control item is complete.
-
-## npm
+No npm registry mutation was authorized during the GitHub launch.
 
 1. Require 2FA on the maintainer account.
 2. Publish only the reviewed `1.0.0-rc.0` artifact interactively with the `next` tag as the documented trust bootstrap; it cannot carry GitHub provenance.
@@ -39,6 +34,6 @@ Create an `npm` deployment environment with maintainer approval before release j
 5. Publish `1.0.0` only through the protected OIDC workflow and verify its provenance.
 6. Keep the bootstrap prerelease limitation documented and never use an interactive exception for stable releases.
 
-## Pi gallery
+## Pi gallery — deferred with npm
 
 The `pi-package` keyword and `pi.image` manifest field make the package eligible for `https://pi.dev/packages`. After npm publication, verify the gallery card, image, description, install source, and repository link at desktop and narrow widths.

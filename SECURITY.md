@@ -10,7 +10,7 @@ pi update npm:pi-timelens
 
 ## Reporting a vulnerability
 
-Release and public announcement are blocked until GitHub private vulnerability reporting is enabled. Once this repository becomes public, maintainers enable and verify **Report a vulnerability** in the Security tab before announcing or publishing the package. Do not open a public issue for a suspected vulnerability or include sensitive details in a public message.
+GitHub private vulnerability reporting is enabled. Use **Report a vulnerability** in the Security tab. Do not open a public issue for a suspected vulnerability or include sensitive details in a public message.
 
 Include the affected version, impact, minimal reproduction, and any suggested mitigation. You can expect an acknowledgement within seven days. Disclosure timing will be coordinated after a fix is available.
 

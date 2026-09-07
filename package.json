@@ -1,0 +1,74 @@
+{
+	"name": "pi-timelens",
+	"version": "1.0.0-rc.0",
+	"description": "Local timing and token observability for Pi — every turn, every tool, every token.",
+	"type": "module",
+	"license": "MIT",
+	"author": "Falk (https://github.com/eysenfalk)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/eysenfalk/pi-timelens.git"
+	},
+	"homepage": "https://github.com/eysenfalk/pi-timelens#readme",
+	"bugs": {
+		"url": "https://github.com/eysenfalk/pi-timelens/issues"
+	},
+	"keywords": [
+		"pi-package",
+		"pi",
+		"pi-coding-agent",
+		"timing",
+		"telemetry",
+		"observability",
+		"tokens",
+		"ttft",
+		"tps",
+		"developer-tools"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"extensions/pi-timelens",
+		"docs",
+		"media",
+		"CHANGELOG.md",
+		"LICENSE",
+		"README.md",
+		"SECURITY.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"benchmark": "node --experimental-strip-types scripts/benchmark.mjs",
+		"check": "npm run lint && npm run typecheck && npm test && npm run docs:check && npm run workflow:check && npm run package:check",
+		"docs:check": "node scripts/check-docs.mjs",
+		"format": "biome check --write .",
+		"lint": "biome check .",
+		"package:check": "node scripts/check-package.mjs",
+		"smoke:packed": "node scripts/smoke-packed-pi.mjs",
+		"test": "node --experimental-strip-types --test tests/*.test.ts",
+		"test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/*.test.ts",
+		"typecheck": "tsc --noEmit",
+		"workflow:check": "node scripts/check-workflows.mjs",
+		"prepublishOnly": "npm run check"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/pi-timelens/index.ts"
+		],
+		"image": "https://raw.githubusercontent.com/eysenfalk/pi-timelens/main/media/gallery.webp"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.12",
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@earendil-works/pi-tui": "0.85.1",
+		"@types/node": "22.20.0",
+		"typescript": "5.9.3"
+	}
+}

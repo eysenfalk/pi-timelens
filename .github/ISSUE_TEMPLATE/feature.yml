@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a focused improvement to measurement, reporting, or integration
+title: "feat: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What timing or observability decision is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe behavior and user-visible output, not only implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Measurement and privacy invariants
+      description: How should missing provider data, concurrency, model context, exports, and lifecycle edges behave?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This can remain local-first and outside model context.
+          required: true
+        - label: This does not require fabricated token or cost estimates.
+          required: true

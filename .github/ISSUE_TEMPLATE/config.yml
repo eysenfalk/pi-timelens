@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/eysenfalk/pi-timelens/security/advisories/new
+    about: Report security issues privately; do not open a public issue.
+  - name: Pi package documentation
+    url: https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md
+    about: Learn how Pi installs and manages packages.

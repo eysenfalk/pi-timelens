@@ -1,0 +1,59 @@
+name: Bug report
+description: Report incorrect timing, rendering, lifecycle, or package behavior
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Share only timing metadata—never credentials, prompts, session files, tool arguments, or tool output.
+  - type: input
+    id: timelens-version
+    attributes:
+      label: Pi TimeLens version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: pi-version
+    attributes:
+      label: Pi version
+      placeholder: 0.85.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node.js version, terminal, and approximate terminal width
+      placeholder: Ubuntu 24.04, Node 24, Ghostty, 100 columns
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest safe sequence of actions and whether it reproduces after /reload in a fresh Pi session.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste only the relevant timing lines or a redacted screenshot.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safe report
+      options:
+        - label: I removed credentials, prompts, assistant content, tool arguments, tool output, and unrelated session data.
+          required: true
+        - label: I searched existing issues and tested the latest release.
+          required: true

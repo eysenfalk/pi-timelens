@@ -31,7 +31,15 @@ function harness() {
 				submissions: 1,
 				userWaitMs: 0,
 				retryWaitMs: 0,
-				billingMode: "unknown",
+				totalUsage: {
+					input: 100,
+					output: 20,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 120,
+					cost: { input: 0.01, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.02 },
+				},
+				billingMode: "metered",
 				status: "success",
 			},
 		},
@@ -76,6 +84,15 @@ test("dispatches English summary, timeline, legend, and help panels", async () =
 	assert.match(h.panels[1]!.join("\n"), /timeline/);
 	assert.match(h.panels[2]!.join("\n"), /cache-read/);
 	assert.match(h.panels[3]!.join("\n"), /Message Timing V2/);
+});
+
+test("cost-off settings also hide prices in summaries", async () => {
+	const h = harness();
+	await h.command("summary", h.ctx);
+	assert.match(h.panels.at(-1)?.join("\n") ?? "", /Cost\s+\$0\.0200/);
+	await h.command("settings cost off", h.ctx);
+	await h.command("summary", h.ctx);
+	assert.doesNotMatch(h.panels.at(-1)?.join("\n") ?? "", /Cost\s+\$/);
 });
 
 test("persists valid settings and rejects invalid values", async () => {

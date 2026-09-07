@@ -35,16 +35,18 @@ From a source checkout, use `pi install .` instead.
 
 <picture>
   <source media="(max-width: 600px)" srcset="media/gallery-mobile.webp">
-  <img src="media/gallery.webp" alt="Pi TimeLens showing assistant latency, complete token labels, a parallel tool batch, and a request total" width="960">
+   <img src="media/gallery.webp" alt="A faithful Pi transcript redrawing showing TimeLens assistant latency, a parallel tool batch, and a request total" width="960">
 </picture>
+
+_Faithful transcript redraws from real Pi 0.85.1 sessions at desktop and narrow widths. Startup, transient working/status UI, update notice, footer, and filesystem-path content are omitted; timing text, wrapping, ordering, and theme colors are preserved._
 
 ## What you get
 
 | Lens | What it reveals |
 | --- | --- |
 | Assistant | Total duration, TTFT, streaming time, provider-reported output tokens/s, usage, and cost or subscription mode |
-| Tools | Individual duration and reported usage for model-backed tools; ordinary tools correctly show `tok —` |
-| Batches | One source-ordered record after the last tool, with elapsed `wall` time and cumulative `work` time |
+| Tools | Individual duration and status; model-backed usage appears only when a tool reports it |
+| Batches | One source-ordered record after the last tool, with `wall`, `work`, and one aggregate of reported nested usage and cost |
 | Cycle | Full request duration, model time, tool wall/work, retry wait, user wait, status, and aggregate usage |
 | Session | Current-branch summary, timeline, safe JSON/CSV export, and content-free live telemetry for footer integrations |
 
@@ -53,9 +55,9 @@ From a source checkout, use `pi install .` instead.
   Σ9.9k ↑1.5k ↓284 R8.1k W0 · $0.0030
 
 ◆ Batch · 3 tools · wall 393ms · work 690ms
-  1. read · 181ms · tok —
-  2. bash · 393ms · tok —
-  3. read · 116ms · tok —
+  1. read · 181ms
+  2. bash · 393ms
+  3. read · 116ms
 
 ◆ Total · 12:07:13.442–12:07:26.382 · 12.94s · 2 steps · 3 tools
   Σ22.3k ↑20.1k ↓904 R1.3k W0 · sub
@@ -69,7 +71,15 @@ Token symbols are optimized for narrow terminals:
 - `R` cache read
 - `W` cache write
 
-Pi TimeLens never estimates missing provider data. A dash means unavailable, not zero.
+Pi TimeLens never estimates missing provider data. Ordinary tools omit token noise entirely. When model-backed tools report usage, their batch gets one combined token-and-price total:
+
+```text
+◆ Batch · 2 tools · wall 300ms · work 500ms · Σ1.4k ↑400 ↓60 R900 W10 · $0.030
+  1. subagent · 200ms
+  2. research · 300ms
+```
+
+`Ctrl+O` reveals the contributing tool totals. Assistant-step usage remains separate, so it is not misattributed or counted twice. A dash means unavailable, not zero.
 
 ## Commands
 
@@ -153,9 +163,9 @@ Read [Contributing](CONTRIBUTING.md) before opening a pull request. Releases fol
 ## FAQ
 
 <details>
-<summary>Why does a tool show <code>tok —</code>?</summary>
+<summary>Why doesn't an ordinary tool show tokens or price?</summary>
 
-Ordinary tools do not report model usage. TimeLens shows token data only when a provider or model-backed tool actually reports it.
+Reading a file or running a shell command does not itself consume model tokens. TimeLens omits an irrelevant placeholder rather than printing `tok —`. The assistant step that requested the tool retains its own provider-reported usage; model-backed tools contribute their separately reported usage to one batch total.
 
 </details>
 

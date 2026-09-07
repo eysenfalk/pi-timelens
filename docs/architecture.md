@@ -51,7 +51,7 @@ Deferred appends are cancelled on shutdown and session replacement, preventing s
 
 ## Test strategy
 
-- Pure core tests cover clocks, TTFT, usage presence, concurrency math, failure recovery, aborts, formatting, and V1 compatibility.
+- Pure core tests cover clocks, TTFT, usage presence, direct and nested model-backed tool accounting, concurrency math, failure recovery, aborts, formatting, and V1 compatibility.
 - Runtime tests drive synthetic Pi lifecycle events, timers, session replacement, settings, and entry ordering.
 - Reporting tests cover branch selection, de-duplication, hostile unknown fields, summary math, JSON, and CSV.
 - Package checks inspect the npm tarball allowlist and forbid runtime install hooks.

@@ -1,54 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title description">
-  <title id="title">Pi TimeLens terminal preview</title>
-  <desc id="description">A terminal view showing assistant latency, token categories, a three-tool batch, and a complete request total.</desc>
-  <rect width="1200" height="675" fill="#080b10"/>
-  <rect x="40" y="35" width="1120" height="605" rx="18" fill="#101620" stroke="#293445" stroke-width="2"/>
-  <rect x="40" y="35" width="1120" height="54" rx="18" fill="#151d29"/>
-  <rect x="40" y="70" width="1120" height="19" fill="#151d29"/>
-  <circle cx="72" cy="62" r="6" fill="#fb7185"/>
-  <circle cx="94" cy="62" r="6" fill="#fbbf24"/>
-  <circle cx="116" cy="62" r="6" fill="#86efac"/>
-  <text x="600" y="69" text-anchor="middle" fill="#8391a5" font-family="DejaVu Sans Mono, Liberation Mono, monospace" font-size="15">pi · session</text>
-  <text x="1090" y="69" text-anchor="end" fill="#c4b5fd" font-family="DejaVu Sans Mono, Liberation Mono, monospace" font-size="15" font-weight="700">PI TIMELENS</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="494" viewBox="0 0 960 494" role="img" aria-labelledby="title desc" xml:space="preserve">
+  <title id="title">Pi TimeLens in a real Pi terminal session</title>
+  <desc id="desc">A selected successful-turn transcript crop from Pi 0.85.1 at 120 columns. Two read tools run in parallel. TimeLens shows assistant latency, one consolidated batch record without empty token placeholders, and the final request total.</desc>
+  <metadata>Selected from a real Pi 0.85.1 TUI session at 120 columns on 2026-09-07. Successful-turn transcript text, wrapping, ordering, and theme colors are preserved; startup, transient working/status UI, update notice, footer, and filesystem path are omitted.</metadata>
+  <rect width="960" height="494" fill="#09090b"/>
 
-  <g font-family="DejaVu Sans Mono, Liberation Mono, monospace" font-size="20">
-    <text x="78" y="132" fill="#67e8f9">›</text>
-    <text x="108" y="132" fill="#e8edf4">Refactor auth and run the focused tests</text>
+  <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="13" fill="#d4d4d4">
+    <text x="20" y="18" font-size="11" fill="#8abeb7">Pi TimeLens · faithful Pi 0.85.1 transcript · 120 columns</text>
+    <g transform="translate(0 24)">
+    <rect x="20" y="18" width="920" height="62" fill="#343541"/>
+    <text x="30" y="42">Use the read tool to read auth.ts and config.ts in one parallel tool batch, then reply with exactly: Verified both</text>
+    <text x="30" y="62">files.</text>
+    <text x="20" y="102" fill="#666666">└ sent 22:24:10.332</text>
 
-    <text x="78" y="180" fill="#7f8da1">12:07:13.442 → 12:07:16.152</text>
-    <text x="445" y="180" fill="#e8edf4">· 2.71s</text>
-    <text x="555" y="180" fill="#fbbf24">· TTFT .82s</text>
-    <text x="725" y="180" fill="#7f8da1">· stream 1.89s</text>
-    <text x="940" y="180" fill="#86efac">· 53 t/s</text>
+    <rect x="20" y="122" width="920" height="46" fill="#283228"/>
+    <text x="30" y="148"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> auth.ts</tspan></text>
+    <rect x="20" y="178" width="920" height="46" fill="#283228"/>
+    <text x="30" y="204"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> config.ts</tspan></text>
 
-    <text x="78" y="215" fill="#c4b5fd">Σ9.9k</text>
-    <text x="168" y="215" fill="#7f8da1">↑1.5k  ↓284  R8.1k  W0</text>
-    <text x="495" y="215" fill="#86efac">· $0.0030</text>
+    <text x="20" y="250" fill="#666666">└ 22:24:10.335–22:24:12.029 · 1.69s · TTFT 1.68s · 4870.5 tok/s · Σ1.6k ↑1.5k ↓88 R0 W0 · sub</text>
 
-    <text x="78" y="270" fill="#86efac">✓</text>
-    <text x="108" y="270" fill="#e8edf4">read</text>
-    <text x="175" y="270" fill="#7f8da1">src/auth.ts</text>
-    <text x="78" y="305" fill="#86efac">✓</text>
-    <text x="108" y="305" fill="#e8edf4">bash</text>
-    <text x="175" y="305" fill="#7f8da1">npm test -- auth</text>
-    <text x="78" y="340" fill="#86efac">✓</text>
-    <text x="108" y="340" fill="#e8edf4">read</text>
-    <text x="175" y="340" fill="#7f8da1">src/session.ts</text>
+    <text x="20" y="288" fill="#b5bd68">◆ Batch · 2 tools · wall 11ms · work 18ms</text>
+    <text x="20" y="310" fill="#666666">  1. read · 10ms</text>
+    <text x="20" y="332" fill="#666666">  2. read · 8ms</text>
 
-    <text x="78" y="395" fill="#67e8f9">◆ Batch</text>
-    <text x="192" y="395" fill="#e8edf4">· 3 tools</text>
-    <text x="325" y="395" fill="#fbbf24">· wall 393ms</text>
-    <text x="505" y="395" fill="#c4b5fd">· work 690ms</text>
-    <text x="108" y="430" fill="#7f8da1">1. read · 181ms · tok —</text>
-    <text x="108" y="462" fill="#7f8da1">2. bash · 393ms · tok —</text>
-    <text x="108" y="494" fill="#7f8da1">3. read · 116ms · tok —</text>
-
-    <text x="78" y="550" fill="#86efac" font-weight="700">◆ Total</text>
-    <text x="192" y="550" fill="#e8edf4">· 12.94s</text>
-    <text x="310" y="550" fill="#7f8da1">· model 2.71s · tools 393ms wall/690ms work</text>
-    <text x="108" y="585" fill="#7f8da1">2 steps · 3 tools · Σ22.3k ↑20.1k ↓904 R1.3k W0 · sub</text>
-
-    <text x="78" y="620" fill="#67e8f9">›</text>
-    <rect x="108" y="602" width="11" height="22" fill="#e8edf4" opacity="0.88"/>
+    <text x="20" y="370">Verified both files.</text>
+    <text x="20" y="404" fill="#666666">└ 22:24:12.043–22:24:15.289 · 3.25s · TTFT 3.19s · 154.9 tok/s · Σ1.7k ↑259 ↓8 R1.4k W0 · sub</text>
+    <text x="20" y="442" fill="#b5bd68">◆ Total · 22:24:10.332–22:24:15.290 · 4.96s · 2 steps · 2 tools · Σ3.3k ↑1.8k ↓96 R1.4k W0 · sub</text>
+    </g>
   </g>
 </svg>

@@ -16,4 +16,10 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Responsive semantic wrapping for narrow terminals.
 - Schema V2 persistence with V1 replay compatibility.
 
+### Changed
+
+- Ordinary tool rows omit the meaningless `tok —` placeholder.
+- Parallel batches show one aggregate of provider-reported nested tool usage and price, while detailed mode keeps per-tool attribution.
+- Mixed subscription and metered aggregates show only the metered subtotal plus a subscription marker.
+
 Publication as `1.0.0` remains gated by the repository and release checklist.

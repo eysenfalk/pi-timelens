@@ -1,13 +1,15 @@
 import {
 	type AssistantTimingRecord,
-	addUsage,
+	addUsageByBilling,
 	type BatchTimingRecord,
+	type BillingMode,
 	type CycleTimingRecord,
 	coerceTimingRecord,
 	formatCompactTokens,
 	formatDuration,
 	formatTimestamp,
 	formatUsageCompact,
+	mergeBilling,
 	type TimingRecord,
 	type ToolTimingRecord,
 	type UsageSnapshot,
@@ -74,14 +76,21 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 	const uncoveredTools = tools.filter(
 		(record) => record.sourceSchemaVersion === 1 || !coveredCycleIds.has(record.cycleId),
 	);
-	let usage: UsageSnapshot | undefined;
 	const completedCycleIds = new Set(cycles.map((record) => record.cycleId));
-	for (const cycle of cycles) usage = addUsage(usage, cycle.totalUsage);
-	for (const assistant of assistants) {
-		if (!completedCycleIds.has(assistant.cycleId)) usage = addUsage(usage, assistant.usage);
-	}
-	for (const tool of tools) {
-		if (!completedCycleIds.has(tool.cycleId)) usage = addUsage(usage, tool.usage);
+	const usageSources = [
+		...cycles.map((record) => ({ usage: record.totalUsage, billingMode: record.billingMode })),
+		...assistants
+			.filter((record) => !completedCycleIds.has(record.cycleId))
+			.map((record) => ({ usage: record.usage, billingMode: record.billingMode })),
+		...tools
+			.filter((record) => !completedCycleIds.has(record.cycleId))
+			.map((record) => ({ usage: record.usage, billingMode: record.billingMode })),
+	];
+	let usage: UsageSnapshot | undefined;
+	let billing: BillingMode = "unknown";
+	for (const source of usageSources) {
+		usage = addUsageByBilling(usage, billing, source.usage, source.billingMode);
+		billing = mergeBilling(billing, source.billingMode);
 	}
 	const ttft = assistants.flatMap((record) => (record.ttftMs === undefined ? [] : [record.ttftMs]));
 	const speeds = assistants.flatMap((record) =>
@@ -91,15 +100,6 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 		(best, tool) => (!best || tool.durationMs > best.durationMs ? tool : best),
 		undefined,
 	);
-	const billedRecords = [
-		...cycles.map((record) => record.billingMode),
-		...uncoveredAssistants.map((record) => record.billingMode),
-		...uncoveredTools.map((record) => record.billingMode),
-	];
-	const hasMetered = billedRecords.includes("metered");
-	const hasSubscription = billedRecords.includes("subscription");
-	const billing =
-		hasMetered && hasSubscription ? "mixed" : hasMetered ? "metered" : hasSubscription ? "subscription" : "unknown";
 	return {
 		cycles: cycles.length,
 		assistantSteps: assistants.length,
@@ -117,7 +117,7 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 		userWaitMs: cycles.reduce((sum, cycle) => sum + cycle.userWaitMs, 0),
 		retryWaitMs: cycles.reduce((sum, cycle) => sum + cycle.retryWaitMs, 0),
 		usage,
-		cost: billing === "metered" ? usage?.cost?.total : undefined,
+		cost: billing === "metered" || billing === "mixed" ? usage?.cost?.total : undefined,
 		billing,
 		ttftMedianMs: percentile(ttft, 0.5),
 		ttftP95Ms: percentile(ttft, 0.95),
@@ -136,7 +136,8 @@ function formatCount(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-export function formatSummary(summary: TimingSummary): string[] {
+export function formatSummary(summary: TimingSummary, display: { showCost?: boolean } = {}): string[] {
+	const showCost = display.showCost ?? true;
 	const lines = [
 		"Timing · current branch",
 		"",
@@ -159,8 +160,10 @@ export function formatSummary(summary: TimingSummary): string[] {
 		);
 	}
 	if (summary.billing === "subscription") lines.push(metric("Billing", "subscription"));
-	else if (summary.billing === "mixed") lines.push(metric("Billing", "mixed"));
-	else if (summary.cost !== undefined) lines.push(metric("Cost", `$${summary.cost.toFixed(4)}`));
+	else if (summary.billing === "mixed") {
+		lines.push(metric("Billing", "mixed"));
+		if (showCost && summary.cost !== undefined) lines.push(metric("Metered cost", `$${summary.cost.toFixed(4)}`));
+	} else if (showCost && summary.cost !== undefined) lines.push(metric("Cost", `$${summary.cost.toFixed(4)}`));
 	if (summary.ttftMedianMs !== undefined) lines.push(metric("TTFT median", formatDuration(summary.ttftMedianMs)));
 	if (summary.ttftP95Ms !== undefined) lines.push(metric("TTFT p95", formatDuration(summary.ttftP95Ms)));
 	if (summary.outputMedianTokensPerSecond !== undefined) {

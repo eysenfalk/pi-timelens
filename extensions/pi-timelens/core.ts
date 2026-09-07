@@ -32,7 +32,7 @@ export interface UsageSnapshot {
 	reported?: UsageFieldPresence;
 }
 
-export type BillingMode = "metered" | "subscription" | "unknown";
+export type BillingMode = "metered" | "subscription" | "mixed" | "unknown";
 export type ToolStatus = "success" | "error" | "aborted";
 export type CycleStatus = "success" | "failed" | "aborted";
 
@@ -273,16 +273,81 @@ export function addUsage(left?: UsageSnapshot, right?: UsageSnapshot): UsageSnap
 	};
 }
 
-function mergeBilling(left: BillingMode, right: BillingMode): BillingMode {
-	if (left === "metered" || right === "metered") return "metered";
-	if (left === "subscription" || right === "subscription") return "subscription";
-	return "unknown";
+export function mergeBilling(left: BillingMode, right: BillingMode): BillingMode {
+	if (left === "unknown") return right;
+	if (right === "unknown") return left;
+	if (left === right) return left;
+	return "mixed";
+}
+
+function withoutSubscriptionCost(
+	usage: UsageSnapshot | undefined,
+	billingMode: BillingMode,
+): UsageSnapshot | undefined {
+	if (!usage) return undefined;
+	const copy = cloneUsage(usage);
+	if (billingMode === "subscription") copy.cost = undefined;
+	return copy;
+}
+
+export function addUsageByBilling(
+	left: UsageSnapshot | undefined,
+	leftBilling: BillingMode,
+	right: UsageSnapshot | undefined,
+	rightBilling: BillingMode,
+): UsageSnapshot | undefined {
+	return addUsage(withoutSubscriptionCost(left, leftBilling), withoutSubscriptionCost(right, rightBilling));
 }
 
 export function billingModeFor(provider: unknown, usage?: UsageSnapshot): BillingMode {
 	if (provider === "openai-codex") return "subscription";
 	if (usage?.cost) return "metered";
 	return "unknown";
+}
+
+function providerFromModel(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const separator = value.indexOf("/");
+	return separator > 0 ? value.slice(0, separator) : undefined;
+}
+
+function toolTelemetry(value: unknown): {
+	usage: UsageSnapshot | undefined;
+	billingMode: BillingMode;
+} {
+	if (!value || typeof value !== "object") return { usage: undefined, billingMode: "unknown" };
+	const record = value as Record<string, unknown>;
+	const details =
+		record.details && typeof record.details === "object" ? (record.details as Record<string, unknown>) : undefined;
+	const results = Array.isArray(details?.results)
+		? details.results.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+		: [];
+	let nestedUsage: UsageSnapshot | undefined;
+	let nestedBillingMode: BillingMode = "unknown";
+	let nestedUnknownBilling = false;
+	for (const result of results) {
+		const usage = normalizeUsage(result.usage);
+		if (!usage) continue;
+		const billingMode = billingModeFor(result.provider ?? providerFromModel(result.model), usage);
+		nestedUnknownBilling ||= billingMode === "unknown";
+		nestedUsage = addUsageByBilling(nestedUsage, nestedBillingMode, usage, billingMode);
+		nestedBillingMode = mergeBilling(nestedBillingMode, billingMode);
+	}
+
+	const directUsage = normalizeUsage(record.usage) ?? normalizeUsage(details?.usage);
+	if (!directUsage) return { usage: nestedUsage, billingMode: nestedBillingMode };
+	const directProvider = record.provider ?? details?.provider;
+	if (directProvider !== undefined) {
+		return { usage: directUsage, billingMode: billingModeFor(directProvider, directUsage) };
+	}
+	if (nestedUsage && nestedBillingMode !== "unknown") {
+		const usage = cloneUsage(directUsage);
+		if (nestedBillingMode === "mixed" || nestedUnknownBilling) {
+			usage.cost = nestedUsage.cost ? { ...nestedUsage.cost } : undefined;
+		}
+		return { usage, billingMode: nestedBillingMode };
+	}
+	return { usage: directUsage, billingMode: billingModeFor(undefined, directUsage) };
 }
 
 function safeWall(value: unknown, fallback: number): number {
@@ -418,7 +483,7 @@ export class TimingTracker {
 		const cycle = this.ensureCycle(turn.started);
 		cycle.assistantSteps += 1;
 		cycle.assistantDurationMs += durationMs;
-		cycle.assistantUsage = addUsage(cycle.assistantUsage, usage);
+		cycle.assistantUsage = addUsageByBilling(cycle.assistantUsage, cycle.billingMode, usage, billingMode);
 		cycle.billingMode = mergeBilling(cycle.billingMode, billingMode);
 		if (stopReason === "aborted") cycle.status = "aborted";
 		else if (stopReason === "error" && cycle.status === "success") cycle.status = "failed";
@@ -474,9 +539,7 @@ export class TimingTracker {
 		const started = active?.started ?? at;
 		const turnIndex = active?.turnIndex ?? this.activeTurnIndex ?? -1;
 		const status = toolWasAborted(result, isError) ? "aborted" : isError ? "error" : "success";
-		const resultRecord = result && typeof result === "object" ? (result as Record<string, unknown>) : undefined;
-		const usage = normalizeUsage(resultRecord?.usage);
-		const provider = resultRecord?.provider ?? (resultRecord?.details as Record<string, unknown> | undefined)?.provider;
+		const telemetry = toolTelemetry(result);
 		const record: ToolTimingRecord = {
 			...this.nextBase(started),
 			kind: "tool",
@@ -486,8 +549,8 @@ export class TimingTracker {
 			startedAt: started.wallMs,
 			endedAt: Math.max(started.wallMs, at.wallMs),
 			durationMs: elapsed(started, at),
-			usage,
-			billingMode: billingModeFor(provider, usage),
+			usage: telemetry.usage,
+			billingMode: telemetry.billingMode,
 			status,
 		};
 		this.activeTools.delete(toolCallId);
@@ -501,14 +564,26 @@ export class TimingTracker {
 		return record;
 	}
 
-	consumeToolResult(toolCallId: string, usageValue: unknown, isError: boolean): ToolTimingRecord | undefined {
+	consumeToolResult(toolCallId: string, result: unknown, isError: boolean): ToolTimingRecord | undefined {
 		const completed = this.completedTools.get(toolCallId);
 		if (!completed) return undefined;
-		const reportedUsage = normalizeUsage(usageValue);
-		if (reportedUsage) {
-			completed.record.usage = reportedUsage;
-			if (completed.record.billingMode === "unknown") {
-				completed.record.billingMode = billingModeFor(undefined, reportedUsage);
+		const telemetry = toolTelemetry(result);
+		if (telemetry.usage) {
+			const currentBilling = completed.record.billingMode;
+			const conflictingFallback =
+				currentBilling !== "unknown" &&
+				telemetry.billingMode !== "unknown" &&
+				currentBilling !== telemetry.billingMode &&
+				telemetry.billingMode !== "mixed";
+			if (conflictingFallback) {
+				const usage = cloneUsage(telemetry.usage);
+				usage.cost = completed.record.usage?.cost ? { ...completed.record.usage.cost } : undefined;
+				completed.record.usage = usage;
+			} else {
+				completed.record.usage = telemetry.usage;
+			}
+			if (currentBilling === "unknown" || telemetry.billingMode === "mixed") {
+				completed.record.billingMode = telemetry.billingMode;
 			}
 		}
 		if (isError && completed.record.status === "success") completed.record.status = "error";
@@ -691,7 +766,12 @@ export class TimingTracker {
 			cycle.toolAborts += 1;
 			cycle.status = "aborted";
 		}
-		cycle.toolUsage = addUsage(cycle.toolUsage, completed.record.usage);
+		cycle.toolUsage = addUsageByBilling(
+			cycle.toolUsage,
+			cycle.billingMode,
+			completed.record.usage,
+			completed.record.billingMode,
+		);
 		cycle.billingMode = mergeBilling(cycle.billingMode, completed.record.billingMode);
 		cycle.toolIntervals.push({ start: completed.startMono, end: completed.endMono });
 		completed.accounted = true;
@@ -742,6 +822,11 @@ export function formatUsageCompact(usage?: UsageSnapshot): string {
 
 function formatBilling(mode: BillingMode, usage?: UsageSnapshot, showCost = true): string | undefined {
 	if (mode === "subscription") return "sub";
+	if (mode === "mixed") {
+		if (!showCost || !usage?.cost) return "mixed";
+		const cost = `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
+		return `${cost} + sub`;
+	}
 	if (showCost && usage?.cost) return `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
 	return undefined;
 }
@@ -822,6 +907,20 @@ function compactWithUsage(
 	return lines;
 }
 
+function aggregateToolUsage(tools: ToolTimingRecord[]): {
+	usage: UsageSnapshot | undefined;
+	billingMode: BillingMode;
+} {
+	let usage: UsageSnapshot | undefined;
+	let billingMode: BillingMode = "unknown";
+	for (const tool of tools) {
+		if (!tool.usage) continue;
+		usage = addUsageByBilling(usage, billingMode, tool.usage, tool.billingMode);
+		billingMode = mergeBilling(billingMode, tool.billingMode);
+	}
+	return { usage, billingMode };
+}
+
 export interface TimingDisplayOptions {
 	showCost?: boolean;
 	showMilliseconds?: boolean;
@@ -866,7 +965,9 @@ export function formatTimingRecord(
 	if (record.kind === "tool") {
 		const status = record.status === "success" ? "" : ` · ${record.status === "error" ? "failed" : "aborted"}`;
 		const prefix = `└ ${record.toolName} · ${timestamp(record.startedAt)}–${timestamp(record.endedAt)} · ${formatDuration(record.durationMs)}${status}`;
-		const compact = compactWithUsage(prefix, record.usage, record.billingMode, width, showCost);
+		const compact = record.usage
+			? compactWithUsage(prefix, record.usage, record.billingMode, width, showCost)
+			: wrapSegments(prefix, width);
 		if (!expanded) return compact;
 		return [
 			...compact,
@@ -875,24 +976,30 @@ export function formatTimingRecord(
 				? usageDetails(record.usage, showCost && record.billingMode === "metered").map((line) =>
 						`  ${line}`.slice(0, width),
 					)
-				: ["  Tokens: —"]),
+				: []),
 		];
 	}
 
 	if (record.kind === "batch") {
 		const status = record.status === "success" ? "" : ` · ${record.status === "error" ? "failed" : "aborted"}`;
-		const lines = [
-			`◆ Batch · ${formatCount(record.tools.length, "tool")} · wall ${formatDuration(record.wallMs)} · work ${formatDuration(record.workMs)}${status}`,
-		];
+		const prefix = `◆ Batch · ${formatCount(record.tools.length, "tool")} · wall ${formatDuration(record.wallMs)} · work ${formatDuration(record.workMs)}${status}`;
+		const aggregate = aggregateToolUsage(record.tools);
+		const lines = aggregate.usage
+			? compactWithUsage(prefix, aggregate.usage, aggregate.billingMode, width, showCost)
+			: wrapSegments(prefix, width);
 		for (const [index, tool] of record.tools.entries()) {
 			const outcome = tool.status === "success" ? "" : ` · ${tool.status === "error" ? "failed" : "aborted"}`;
-			const billing = formatBilling(tool.billingMode, tool.usage, showCost);
-			const suffix = `${formatUsageCompact(tool.usage)}${billing ? ` · ${billing}` : ""}`;
 			lines.push(
-				`  ${index + 1}. ${tool.toolName} · ${formatDuration(tool.durationMs)}${outcome} · ${suffix}`.slice(0, width),
+				...wrapSegments(`  ${index + 1}. ${tool.toolName} · ${formatDuration(tool.durationMs)}${outcome}`, width),
 			);
-			if (expanded)
-				lines.push(`     ${tool.toolCallId} · ${timestamp(tool.startedAt)}–${timestamp(tool.endedAt)}`.slice(0, width));
+			if (expanded) {
+				const details = `     ${tool.toolCallId} · ${timestamp(tool.startedAt)}–${timestamp(tool.endedAt)}`;
+				lines.push(
+					...(tool.usage
+						? compactWithUsage(details, tool.usage, tool.billingMode, width, showCost)
+						: wrapSegments(details, width)),
+				);
+			}
 		}
 		return lines;
 	}

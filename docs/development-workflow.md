@@ -65,7 +65,7 @@ npm run smoke:packed
 npm run benchmark
 ```
 
-`npm run check` executes Biome, strict TypeScript, the complete test suite, Markdown/media checks, workflow-contract checks, and npm package inspection. The current release candidate passed 51 tests; that count is evidence for the referenced commit, not a permanent promise.
+`npm run check` executes Biome, strict TypeScript, the complete test suite, Markdown/media checks, workflow-contract checks, and npm package inspection. The Step-summary candidate passed 54 tests; that count is evidence for the referenced commit, not a permanent promise.
 
 ## 3. Treat the npm artifact as the product
 
@@ -129,9 +129,10 @@ Inspect the active screen with a one-shot PTY status read, wait for the final se
 Assert the actual behavior, not only visual resemblance:
 
 - Pi reports one TimeLens extension;
-- both reads belong to one batch in source order;
-- tokens and billing appear once at batch scope;
-- the final timing record is settled and no live status remains;
+- both reads belong to one Step in source order;
+- compact output does not repeat member timing rows already represented by Pi's native tool cards;
+- assistant and model-backed-tool usage appears once at Step scope;
+- the final Total is settled and no live status remains;
 - unrelated startup or renderer errors are absent;
 - every visible line fits 120 columns;
 - shutdown completes and temporary state is removed.
@@ -177,10 +178,10 @@ Sanitization may remove irrelevant private context, but it must never make the e
 
 The original showcase artwork was replaced after comparison with the real TUI showed a fidelity gap. The current sources are accessible, reviewable transcript redraws derived from the sanitized fixtures:
 
-- [`media/demo.svg`](../media/demo.svg) — 960 × 494, 120-column composition;
-- [`media/demo-mobile.svg`](../media/demo-mobile.svg) — 440 × 694, 40-column composition.
+- [`media/demo.svg`](../media/demo.svg) — 960 × 410, 120-column composition;
+- [`media/demo-mobile.svg`](../media/demo-mobile.svg) — 440 × 620, 40-column composition.
 
-The SVGs were manually authored from those fixtures: each visible transcript line was copied into an SVG `<text>` element at the matching wide or narrow line break, then color and spacing were applied from the observed Pi theme. The result was read back as source, rendered, and compared side by side with both the fixture and retained final screen. The SVGs include `<title>`, `<desc>`, and provenance `<metadata>` and visibly label themselves as faithful Pi transcript redraws. They are not called screenshots because the crop is reconstructed rather than a pixel dump.
+The SVGs were manually authored from those fixtures: each visible transcript line was copied into an SVG `<text>` element at the matching wide or narrow line break, then color, hierarchy, and spacing were applied from the observed Pi theme. The result was read back as source, rendered, and compared side by side with both the fixture and retained final screen. The SVGs include `<title>`, `<desc>`, and provenance `<metadata>` and visibly label themselves as faithful Pi transcript redraws. They are not called screenshots because the crop is reconstructed rather than a pixel dump.
 
 The current `check-docs` script verifies provenance markers, fixture and asset existence, README integration, and rejection of known stale strings. It does **not** prove line-for-line SVG fidelity; that remains an explicit manual review gate whenever capture text or media changes.
 

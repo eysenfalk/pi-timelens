@@ -129,7 +129,7 @@ async function startTurn(h: ReturnType<typeof harness>, turnIndex = 0): Promise<
 	await h.emit("turn_start", { turnIndex, timestamp: 1_020 });
 }
 
-test("emits one consolidated entry after a parallel batch", async () => {
+test("emits one consolidated Step after a parallel tool turn", async () => {
 	const h = harness();
 	await h.emit("session_start", { reason: "startup" });
 	await startTurn(h);
@@ -172,17 +172,20 @@ test("emits one consolidated entry after a parallel batch", async () => {
 
 	assert.deepEqual(
 		h.appended.map((record) => record.kind),
-		["user", "assistant", "batch"],
+		["user", "step"],
 	);
-	const batch = h.appended.at(-1)!;
-	assert.equal(batch.kind, "batch");
-	if (batch.kind !== "batch") return;
+	const step = h.appended.at(-1)!;
+	assert.equal(step.kind, "step");
+	if (step.kind !== "step") return;
 	assert.deepEqual(
-		batch.tools.map((tool) => tool.toolCallId),
+		step.tools.map((tool) => tool.toolCallId),
 		["a", "b"],
 	);
-	assert.equal(h.render(batch).match(/◆ Batch/g)?.length, 1);
-	assert.doesNotMatch(h.render(batch), /tok —/);
+	assert.equal(step.usage?.totalTokens, 1_000);
+	assert.equal(h.render(step).match(/◆ Step/g)?.length, 1);
+	assert.match(h.render(step), /1k tokens/);
+	assert.doesNotMatch(h.render(step), /read|bash|tok —|Σ|↑|↓/);
+	assert.match(h.render(step, true), /1\. read/);
 });
 
 test("aggregates nested model-backed usage through the runtime adapter", async () => {
@@ -215,14 +218,14 @@ test("aggregates nested model-backed usage through the runtime adapter", async (
 	});
 	await h.emit("turn_end", { turnIndex: 0 });
 	h.flushDeferred();
-	const batch = h.appended.at(-1)!;
-	assert.equal(batch.kind, "batch");
-	assert.match(h.render(batch).split("\n")[0]!, /Σ850 ↑300 ↓40 R500 W10 · \$0\.020$/);
-	assert.doesNotMatch(h.render(batch).split("\n").slice(1).join("\n"), /Σ|\$|tok —/);
-	assert.match(h.render(batch, true), /b .* Σ850 ↑300 ↓40 R500 W10 · \$0\.020/);
+	const step = h.appended.at(-1)!;
+	assert.equal(step.kind, "step");
+	assert.match(h.render(step), /850 tokens · 500 cached · 10 cache write · \$0\.020/);
+	assert.doesNotMatch(h.render(step), /read|subagent|Σ|↑|↓|R500|W10|tok —/);
+	assert.match(h.render(step, true), /2\. subagent/);
 });
 
-test("emits one compact record for a single tool", async () => {
+test("emits one compact Step for a single tool", async () => {
 	const h = harness();
 	await h.emit("session_start");
 	await startTurn(h);
@@ -235,8 +238,9 @@ test("emits one compact record for a single tool", async () => {
 	await h.emit("message_end", { message: { role: "toolResult", toolCallId: "one", isError: false } });
 	await h.emit("turn_end", { turnIndex: 0 });
 	h.flushDeferred();
-	assert.equal(h.appended.filter((record) => record.kind === "tool").length, 1);
-	assert.equal(h.appended.filter((record) => record.kind === "batch").length, 0);
+	assert.equal(h.appended.filter((record) => record.kind === "step").length, 1);
+	assert.equal(h.appended.filter((record) => record.kind === "tool" || record.kind === "batch").length, 0);
+	assert.doesNotMatch(h.render(h.appended.at(-1)!), /read/);
 });
 
 test("records TTFT from the first meaningful delta and uses monotonic duration", async () => {
@@ -263,13 +267,14 @@ test("records TTFT from the first meaningful delta and uses monotonic duration",
 			content: [{ type: "text", text: "x" }],
 		},
 	});
+	await h.emit("turn_end", { turnIndex: 0 });
 	h.flushDeferred();
-	const assistant = h.appended.find((record) => record.kind === "assistant");
-	assert.equal(assistant?.kind, "assistant");
-	if (assistant?.kind !== "assistant") return;
-	assert.equal(assistant.ttftMs, 100);
-	assert.equal(assistant.durationMs, 200);
-	assert.equal(assistant.streamingMs, 100);
+	const step = h.appended.find((record) => record.kind === "step");
+	assert.equal(step?.kind, "step");
+	if (step?.kind !== "step" || !step.assistant) return;
+	assert.equal(step.assistant.ttftMs, 100);
+	assert.equal(step.assistant.durationMs, 200);
+	assert.equal(step.assistant.streamingMs, 100);
 });
 
 test("publishes and clears English live footer state", async () => {
@@ -347,7 +352,7 @@ test("a rejected idle submission does not contaminate the next cycle", async () 
 	assert.equal(cycle?.kind === "cycle" ? cycle.startedAt : undefined, 500);
 });
 
-test("renders legacy V1 entries with the V2 renderer", async () => {
+test("renders legacy V1 entries with the current renderer", async () => {
 	const h = harness();
 	await h.emit("session_start");
 	const text = h.render({

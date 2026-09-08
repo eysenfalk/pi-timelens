@@ -1,4 +1,4 @@
-export const TIMING_SCHEMA_VERSION = 2 as const;
+export const TIMING_SCHEMA_VERSION = 3 as const;
 
 export interface ClockReading {
 	wallMs: number;
@@ -34,11 +34,12 @@ export interface UsageSnapshot {
 
 export type BillingMode = "metered" | "subscription" | "mixed" | "unknown";
 export type ToolStatus = "success" | "error" | "aborted";
+export type StepStatus = "success" | "error" | "aborted";
 export type CycleStatus = "success" | "failed" | "aborted";
 
 interface RecordBase {
 	schemaVersion: typeof TIMING_SCHEMA_VERSION;
-	/** Preserves whether a replayed record originated in the V1 schema. */
+	/** Preserves whether a replayed record originated in an earlier schema. */
 	sourceSchemaVersion?: 1 | 2;
 	cycleId: string;
 	sequence: number;
@@ -90,6 +91,21 @@ export interface BatchTimingRecord extends RecordBase {
 	tools: ToolTimingRecord[];
 }
 
+export interface StepTimingRecord extends RecordBase {
+	kind: "step";
+	turnIndex: number;
+	startedAt: number;
+	endedAt: number;
+	durationMs: number;
+	assistant?: AssistantTimingRecord;
+	toolWallMs: number;
+	toolWorkMs: number;
+	tools: ToolTimingRecord[];
+	usage?: UsageSnapshot;
+	billingMode: BillingMode;
+	status: StepStatus;
+}
+
 export interface CycleTimingRecord extends RecordBase {
 	kind: "cycle";
 	startedAt: number;
@@ -117,6 +133,7 @@ export type TimingRecord =
 	| AssistantTimingRecord
 	| ToolTimingRecord
 	| BatchTimingRecord
+	| StepTimingRecord
 	| CycleTimingRecord;
 
 interface ActiveCycle {
@@ -142,6 +159,8 @@ interface ActiveTurn {
 	turnIndex: number;
 	started: ClockReading;
 	firstOutput?: ClockReading;
+	assistant?: AssistantTimingRecord;
+	assistantEndedMono?: number;
 	toolCallIds: string[];
 }
 
@@ -469,7 +488,11 @@ export class TimingTracker {
 
 	finishAssistant(message: Record<string, unknown>, at: ClockReading): AssistantTimingRecord {
 		const turnIndex = this.activeTurnIndex ?? -1;
-		const turn = this.turns.get(turnIndex) ?? { turnIndex, started: at, toolCallIds: [] };
+		let turn = this.turns.get(turnIndex);
+		if (!turn) {
+			turn = { turnIndex, started: at, toolCallIds: [] };
+			this.turns.set(turnIndex, turn);
+		}
 		if (!turn.firstOutput && messageHasContent(message)) turn.firstOutput = at;
 		const durationMs = elapsed(turn.started, at);
 		const stopReason = typeof message.stopReason === "string" ? message.stopReason : undefined;
@@ -498,7 +521,7 @@ export class TimingTracker {
 			usage && usageFieldReported(usage, "output") && streamingMs && streamingMs > 0
 				? usage.output / (streamingMs / 1_000)
 				: undefined;
-		return {
+		const record: AssistantTimingRecord = {
 			...this.nextBase(turn.started),
 			kind: "assistant",
 			turnIndex,
@@ -514,6 +537,9 @@ export class TimingTracker {
 			billingMode,
 			stopReason,
 		};
+		turn.assistant = record;
+		turn.assistantEndedMono = Math.max(turn.started.monoMs, at.monoMs);
+		return cloneAssistant(record);
 	}
 
 	startTool(toolCallId: string, toolName: string, at: ClockReading): void {
@@ -592,42 +618,22 @@ export class TimingTracker {
 		return cloneTool(completed.record);
 	}
 
-	finishTurn(turnIndex: number): ToolTimingRecord | BatchTimingRecord | undefined {
+	finishTurn(turnIndex: number): StepTimingRecord | undefined {
 		const turn = this.turns.get(turnIndex);
 		this.turns.delete(turnIndex);
 		if (this.activeTurnIndex === turnIndex) this.activeTurnIndex = undefined;
-		if (!turn || turn.toolCallIds.length === 0) return undefined;
+		if (!turn) return undefined;
 		const completed = turn.toolCallIds
 			.map((id) => this.completedTools.get(id))
 			.filter((item): item is CompletedTool => item !== undefined);
-		if (completed.length === 0) return undefined;
 		for (const item of completed) {
 			this.accountTool(item);
 			this.completedTools.delete(item.record.toolCallId);
 		}
-		const tools = completed.map((item) => cloneTool(item.record));
-		if (tools.length === 1) return tools[0];
-		const first = completed.reduce((best, item) => (item.startMono < best.startMono ? item : best));
-		const last = completed.reduce((best, item) => (item.endMono > best.endMono ? item : best));
-		return {
-			...this.nextBase({ wallMs: first.record.startedAt, monoMs: first.startMono }),
-			kind: "batch",
-			turnIndex,
-			batchId: `${this.cycle?.id ?? "cycle"}:turn-${turnIndex}`,
-			startedAt: first.record.startedAt,
-			endedAt: last.record.endedAt,
-			wallMs: Math.max(0, last.endMono - first.startMono),
-			workMs: tools.reduce((sum, tool) => sum + tool.durationMs, 0),
-			status: tools.some((tool) => tool.status === "aborted")
-				? "aborted"
-				: tools.some((tool) => tool.status === "error")
-					? "error"
-					: "success",
-			tools,
-		};
+		return this.buildStep(turn, completed);
 	}
 
-	finishOutstandingTools(at: ClockReading): Array<ToolTimingRecord | BatchTimingRecord> {
+	finishOutstandingTools(at: ClockReading): StepTimingRecord[] {
 		for (const active of [...this.activeTools.values()]) {
 			this.finishTool(active.toolCallId, active.toolName, { aborted: true }, true, at);
 		}
@@ -635,14 +641,27 @@ export class TimingTracker {
 			completed.consumed = true;
 			this.accountTool(completed);
 		}
-		const records: Array<ToolTimingRecord | BatchTimingRecord> = [];
+		const records: StepTimingRecord[] = [];
 		for (const turnIndex of [...this.turns.keys()].sort((a, b) => a - b)) {
 			const record = this.finishTurn(turnIndex);
 			if (record) records.push(record);
 		}
+		const orphaned = new Map<number, CompletedTool[]>();
 		for (const [toolCallId, completed] of this.completedTools) {
-			records.push(cloneTool(completed.record));
+			const group = orphaned.get(completed.record.turnIndex) ?? [];
+			group.push(completed);
+			orphaned.set(completed.record.turnIndex, group);
 			this.completedTools.delete(toolCallId);
+		}
+		for (const [turnIndex, completed] of [...orphaned].sort(([left], [right]) => left - right)) {
+			const first = completed.reduce((best, item) => (item.startMono < best.startMono ? item : best));
+			const turn: ActiveTurn = {
+				turnIndex,
+				started: { wallMs: first.record.startedAt, monoMs: first.startMono },
+				toolCallIds: completed.map((item) => item.record.toolCallId),
+			};
+			const record = this.buildStep(turn, completed);
+			if (record) records.push(record);
 		}
 		return records;
 	}
@@ -754,6 +773,57 @@ export class TimingTracker {
 		return { schemaVersion: TIMING_SCHEMA_VERSION, cycleId: cycle.id, sequence: cycle.sequence };
 	}
 
+	private buildStep(turn: ActiveTurn, completed: CompletedTool[]): StepTimingRecord | undefined {
+		if (!turn.assistant && completed.length === 0) return undefined;
+		const tools = completed.map((item) => cloneTool(item.record));
+		const toolIntervals = completed.map((item) => ({ start: item.startMono, end: item.endMono }));
+		const toolWallMs = unionDuration(toolIntervals);
+		const toolWorkMs = tools.reduce((sum, tool) => sum + tool.durationMs, 0);
+		let usage = addUsageByBilling(
+			undefined,
+			"unknown",
+			turn.assistant?.usage,
+			turn.assistant?.billingMode ?? "unknown",
+		);
+		let billingMode = turn.assistant?.billingMode ?? "unknown";
+		for (const tool of tools) {
+			usage = addUsageByBilling(usage, billingMode, tool.usage, tool.billingMode);
+			billingMode = mergeBilling(billingMode, tool.billingMode);
+		}
+		const endedMono = Math.max(
+			turn.assistantEndedMono ?? turn.started.monoMs,
+			...completed.map((item) => item.endMono),
+		);
+		const endedAt = Math.max(turn.assistant?.endedAt ?? turn.started.wallMs, ...tools.map((tool) => tool.endedAt));
+		const assistantStatus: StepStatus =
+			turn.assistant?.stopReason === "aborted"
+				? "aborted"
+				: turn.assistant?.stopReason === "error"
+					? "error"
+					: "success";
+		const status: StepStatus =
+			assistantStatus === "aborted" || tools.some((tool) => tool.status === "aborted")
+				? "aborted"
+				: assistantStatus === "error" || tools.some((tool) => tool.status === "error")
+					? "error"
+					: "success";
+		return {
+			...this.nextBase(turn.started),
+			kind: "step",
+			turnIndex: turn.turnIndex,
+			startedAt: turn.assistant?.startedAt ?? tools[0]?.startedAt ?? turn.started.wallMs,
+			endedAt,
+			durationMs: Math.max(0, endedMono - turn.started.monoMs),
+			assistant: turn.assistant ? cloneAssistant(turn.assistant) : undefined,
+			toolWallMs,
+			toolWorkMs,
+			tools,
+			usage,
+			billingMode,
+			status,
+		};
+	}
+
 	private accountTool(completed: CompletedTool): void {
 		if (completed.accounted) return;
 		const cycle = this.ensureCycle({ wallMs: completed.record.startedAt, monoMs: completed.startMono });
@@ -776,6 +846,13 @@ export class TimingTracker {
 		cycle.toolIntervals.push({ start: completed.startMono, end: completed.endMono });
 		completed.accounted = true;
 	}
+}
+
+function cloneAssistant(record: AssistantTimingRecord): AssistantTimingRecord {
+	return {
+		...record,
+		usage: record.usage ? cloneUsage(record.usage) : undefined,
+	};
 }
 
 function cloneTool(record: ToolTimingRecord): ToolTimingRecord {
@@ -833,6 +910,47 @@ function formatBilling(mode: BillingMode, usage?: UsageSnapshot, showCost = true
 
 function usageDetailField(usage: UsageSnapshot, field: keyof UsageFieldPresence): string {
 	return usageFieldReported(usage, field) ? integerFormat.format(usage[field]) : "—";
+}
+
+function formatReadableBilling(
+	mode: BillingMode,
+	usage: UsageSnapshot | undefined,
+	showCost = true,
+): string | undefined {
+	if (mode === "subscription") return "subscription";
+	const formattedCost = usage?.cost ? `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}` : undefined;
+	if (mode === "mixed") {
+		if (showCost && formattedCost) return `${formattedCost} + subscription`;
+		return "mixed billing";
+	}
+	if (mode === "metered" && showCost) return formattedCost;
+	return undefined;
+}
+
+function readableUsageSegments(usage: UsageSnapshot | undefined, billing: BillingMode, showCost = true): string[] {
+	const segments: string[] = [];
+	if (usage && usageFieldReported(usage, "totalTokens")) {
+		segments.push(`${formatCompactTokens(usage.totalTokens)} tokens`);
+	}
+	if (usage && usageFieldReported(usage, "cacheRead") && usage.cacheRead > 0) {
+		segments.push(`${formatCompactTokens(usage.cacheRead)} cached`);
+	}
+	if (usage && usageFieldReported(usage, "cacheWrite") && usage.cacheWrite > 0) {
+		segments.push(`${formatCompactTokens(usage.cacheWrite)} cache write`);
+	}
+	const billingText = formatReadableBilling(billing, usage, showCost);
+	if (billingText) segments.push(billingText);
+	return segments;
+}
+
+function compactReadable(
+	prefixSegments: string[],
+	usage: UsageSnapshot | undefined,
+	billing: BillingMode,
+	width: number,
+	showCost = true,
+): string[] {
+	return wrapSegments([...prefixSegments, ...readableUsageSegments(usage, billing, showCost)].join(" · "), width);
 }
 
 function usageDetails(usage: UsageSnapshot, showCost = true): string[] {
@@ -934,7 +1052,7 @@ export function formatTimingRecord(
 ): string[] {
 	const showCost = display.showCost ?? true;
 	const timestamp = (value: number) => formatTimestamp(value, display.showMilliseconds ?? true);
-	if (record.kind === "user") return [`└ sent ${timestamp(record.submittedAt)}`.slice(0, width)];
+	if (record.kind === "user") return expanded ? [`  Sent: ${timestamp(record.submittedAt)}`.slice(0, width)] : [];
 
 	if (record.kind === "assistant") {
 		const state = record.stopReason === "aborted" ? " · aborted" : record.stopReason === "error" ? " · failed" : "";
@@ -960,6 +1078,52 @@ export function formatTimingRecord(
 			details.push(`Model:       ${[record.provider, record.model].filter(Boolean).join("/")}`);
 		if (record.stopReason) details.push(`Stop reason: ${record.stopReason}`);
 		return [...compact, ...details.map((line) => `  ${line}`.slice(0, width))];
+	}
+
+	if (record.kind === "step") {
+		const prefix = ["◆ Step", formatDuration(record.durationMs)];
+		if (record.assistant?.ttftMs !== undefined) prefix.push(`first ${formatDuration(record.assistant.ttftMs)}`);
+		if (record.tools.length === 1) prefix.push(`tool ${formatDuration(record.toolWallMs)}`);
+		else if (record.tools.length > 1)
+			prefix.push(`${formatCount(record.tools.length, "tool")} ${formatDuration(record.toolWallMs)}`);
+		if (record.status === "aborted") prefix.push("aborted");
+		else if (record.status === "error") {
+			const failures = record.tools.filter((tool) => tool.status === "error").length;
+			prefix.push(failures > 0 ? formatCount(failures, "failure") : "failed");
+		}
+		const compact = compactReadable(prefix, record.usage, record.billingMode, width, showCost);
+		if (!expanded) return compact;
+		const details = [
+			`Time:        ${timestamp(record.startedAt)}–${timestamp(record.endedAt)}`,
+			...(record.assistant
+				? [
+						`Model:       ${formatDuration(record.assistant.durationMs)}`,
+						`First output: ${record.assistant.ttftMs === undefined ? "—" : formatDuration(record.assistant.ttftMs)}`,
+						`Streaming:    ${record.assistant.streamingMs === undefined ? "—" : formatDuration(record.assistant.streamingMs)}`,
+						`Output speed: ${record.assistant.outputTokensPerSecond === undefined ? "—" : `${record.assistant.outputTokensPerSecond.toFixed(1)} tok/s`}`,
+					]
+				: []),
+			`Tools:       ${record.tools.length} · wall ${formatDuration(record.toolWallMs)} · work ${formatDuration(record.toolWorkMs)}`,
+		];
+		for (const [index, tool] of record.tools.entries()) {
+			details.push(
+				`${index + 1}. ${tool.toolName} · ${formatDuration(tool.durationMs)} · ${tool.status} · ${tool.toolCallId}`,
+			);
+			if (tool.usage && record.tools.length > 1) {
+				details.push(
+					`Usage (${tool.toolName}):`,
+					...usageDetails(tool.usage, showCost && tool.billingMode === "metered").map((line) => `  ${line}`),
+				);
+			}
+		}
+		if (record.usage) {
+			details.push("Step usage:", ...usageDetails(record.usage, showCost && record.billingMode !== "subscription"));
+		}
+		if (record.assistant?.provider || record.assistant?.model) {
+			details.push(`Provider:    ${[record.assistant.provider, record.assistant.model].filter(Boolean).join("/")}`);
+		}
+		if (record.assistant?.stopReason) details.push(`Stop reason: ${record.assistant.stopReason}`);
+		return [...compact, ...details.flatMap((line) => wrapWords(`  ${line}`, width))];
 	}
 
 	if (record.kind === "tool") {
@@ -1005,19 +1169,30 @@ export function formatTimingRecord(
 	}
 
 	const title = record.status === "aborted" ? "◆ Aborted" : record.status === "failed" ? "◆ Failed" : "◆ Total";
-	const prefix = `${title} · ${timestamp(record.startedAt)}–${timestamp(record.endedAt)} · ${formatDuration(record.durationMs)} · ${formatCount(record.assistantSteps, "step")} · ${formatCount(record.toolCalls, "tool")}`;
-	const compact = compactWithUsage(prefix, record.totalUsage, record.billingMode, width, showCost);
+	const prefix = [title, formatDuration(record.durationMs), `model ${formatDuration(record.assistantDurationMs)}`];
+	if (record.toolCalls > 0) prefix.push(`tools ${formatDuration(record.toolWallMs)}`);
+	if (record.status === "success" && record.toolFailures > 0) {
+		prefix.push(`recovered ${formatCount(record.toolFailures, "failure")}`);
+	} else if (record.status === "failed" && record.toolFailures > 0) {
+		prefix.push(formatCount(record.toolFailures, "failure"));
+	}
+	if (record.toolAborts > 0) prefix.push(formatCount(record.toolAborts, "abort"));
+	const compact = compactReadable(prefix, record.totalUsage, record.billingMode, width, showCost);
 	if (!expanded) return compact;
 	const details = [
+		`Time:       ${timestamp(record.startedAt)}–${timestamp(record.endedAt)}`,
+		`Steps:      ${record.assistantSteps}`,
+		`Tools:      ${record.toolCalls}`,
 		`Model time: ${formatDuration(record.assistantDurationMs)}`,
 		`Tool wall:  ${formatDuration(record.toolWallMs)}`,
 		`Tool work:  ${formatDuration(record.toolWorkMs)}`,
 		`Failures:   ${record.toolFailures}`,
 		`Aborted:    ${record.toolAborts}`,
+		...(record.totalUsage ? usageDetails(record.totalUsage, showCost && record.billingMode !== "subscription") : []),
 	];
 	if (record.userWaitMs > 0) details.push(`User wait:  ${formatDuration(record.userWaitMs)}`);
 	if (record.retryWaitMs > 0) details.push(`Retry wait: ${formatDuration(record.retryWaitMs)}`);
-	return [...compact, ...details.map((line) => `  ${line}`.slice(0, width))];
+	return [...compact, ...details.flatMap((line) => wrapWords(`  ${line}`, width))];
 }
 
 export function formatLiveSnapshot(snapshot: LiveSnapshot): string {
@@ -1039,8 +1214,22 @@ export function formatLiveSnapshot(snapshot: LiveSnapshot): string {
 export function coerceTimingRecord(value: unknown): TimingRecord | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const record = value as Record<string, unknown>;
-	if (!["user", "assistant", "tool", "batch", "cycle"].includes(String(record.kind))) return undefined;
+	if (!["user", "assistant", "tool", "batch", "step", "cycle"].includes(String(record.kind))) return undefined;
 	if (record.schemaVersion === TIMING_SCHEMA_VERSION) return value as TimingRecord;
+	if (record.schemaVersion === 2) {
+		if (record.kind === "step") return undefined;
+		const upgraded: Record<string, unknown> = {
+			...record,
+			schemaVersion: TIMING_SCHEMA_VERSION,
+			sourceSchemaVersion: record.sourceSchemaVersion === 1 ? 1 : 2,
+		};
+		if (record.kind === "batch" && Array.isArray(record.tools)) {
+			upgraded.tools = record.tools
+				.map((tool) => coerceTimingRecord(tool))
+				.filter((tool): tool is ToolTimingRecord => tool?.kind === "tool");
+		}
+		return upgraded as unknown as TimingRecord;
+	}
 	const startedAt = safeWall(record.startedAt, safeWall(record.submittedAt, 0));
 	const base = {
 		schemaVersion: TIMING_SCHEMA_VERSION,

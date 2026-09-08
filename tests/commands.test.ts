@@ -83,7 +83,7 @@ test("dispatches English summary, timeline, legend, and help panels", async () =
 	assert.match(h.panels[0]!.join("\n"), /current branch/);
 	assert.match(h.panels[1]!.join("\n"), /timeline/);
 	assert.match(h.panels[2]!.join("\n"), /cache-read/);
-	assert.match(h.panels[3]!.join("\n"), /Message Timing V2/);
+	assert.match(h.panels[3]!.join("\n"), /Pi TimeLens/);
 });
 
 test("cost-off settings also hide prices in summaries", async () => {

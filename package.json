@@ -1,7 +1,7 @@
 {
 	"name": "pi-timelens",
 	"version": "1.0.0-rc.0",
-	"description": "Local timing and token observability for Pi — every turn, every tool, every token.",
+	"description": "Understand where your Pi agent's time and tokens went.",
 	"type": "module",
 	"license": "MIT",
 	"author": "Falk (https://github.com/eysenfalk)",

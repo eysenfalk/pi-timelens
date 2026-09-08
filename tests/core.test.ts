@@ -97,17 +97,18 @@ test("preserves known subscription billing when the persisted tool message omits
 	tracker.startTool("sub", "subagent", at(1_100, 100));
 	tracker.finishTool("sub", "subagent", providerResult, false, at(1_300, 300));
 	tracker.consumeToolResult("sub", { usage: providerResult.usage }, false);
-	const tool = tracker.finishTurn(0)!;
+	const step = tracker.finishTurn(0)!;
 	const cycle = tracker.settle(at(1_400, 400))!;
 
-	assert.equal(tool.kind, "tool");
-	assert.equal(tool.billingMode, "subscription");
-	assert.match(formatTimingRecord(tool, false).join("\n"), / · sub$/);
+	assert.equal(step.kind, "step");
+	assert.equal(step.billingMode, "subscription");
+	assert.equal(step.usage?.cost, undefined);
+	assert.match(formatTimingRecord(step, false).join("\n"), / · subscription$/);
 	assert.equal(cycle.billingMode, "subscription");
 	assert.equal(cycle.totalUsage?.cost, undefined);
 });
 
-test("consolidates parallel tools in source order with wall and work durations", () => {
+test("consolidates a model turn and parallel tools into one Step", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	tracker.finishAssistant({ stopReason: "toolUse", content: [] }, at(1_050, 60));
@@ -122,20 +123,21 @@ test("consolidates parallel tools in source order with wall and work durations",
 	tracker.consumeToolResult("a", undefined, false);
 	tracker.consumeToolResult("b", undefined, false);
 	tracker.consumeToolResult("c", undefined, false);
-	const batch = tracker.finishTurn(0)!;
+	const step = tracker.finishTurn(0)!;
 
-	assert.equal(batch.kind, "batch");
-	if (batch.kind !== "batch") return;
+	assert.equal(step.kind, "step");
 	assert.deepEqual(
-		batch.tools.map((tool) => tool.toolCallId),
+		step.tools.map((tool) => tool.toolCallId),
 		["a", "b", "c"],
 	);
-	assert.equal(batch.wallMs, 394);
-	assert.equal(batch.workMs, 181 + 393 + 114);
-	const rendered = formatTimingRecord(batch, false).join("\n");
-	assert.match(rendered, /◆ Batch · 3 tools · wall 394ms · work 688ms/);
-	assert.doesNotMatch(rendered, /tok —/);
-	assert.deepEqual(rendered.split("\n").slice(1), ["  1. read · 181ms", "  2. bash · 393ms", "  3. read · 114ms"]);
+	assert.equal(step.toolWallMs, 394);
+	assert.equal(step.toolWorkMs, 181 + 393 + 114);
+	const compact = formatTimingRecord(step, false).join("\n");
+	const expanded = formatTimingRecord(step, true).join("\n");
+	assert.match(compact, /◆ Step · 474ms · 3 tools 394ms/);
+	assert.doesNotMatch(compact, /read|bash|work|tok —/);
+	assert.match(expanded, /Tools:\s+3 · wall 394ms · work 688ms/);
+	assert.match(expanded, /1\. read · 181ms · success · a/);
 });
 
 test("aggregates provider-reported model usage once for the whole batch", () => {
@@ -152,18 +154,19 @@ test("aggregates provider-reported model usage once for the whole batch", () => 
 	tracker.finishTool("b", "research", nestedResult, false, at(1_400, 400));
 	tracker.consumeToolResult("a", directResult, false);
 	tracker.consumeToolResult("b", nestedResult, false);
-	const batch = tracker.finishTurn(0)!;
-	const compact = formatTimingRecord(batch, false, 160).join("\n");
-	const expanded = formatTimingRecord(batch, true, 160).join("\n");
-	const narrow = formatTimingRecord(batch, false, 60);
+	const step = tracker.finishTurn(0)!;
+	const compact = formatTimingRecord(step, false, 160).join("\n");
+	const expanded = formatTimingRecord(step, true, 160).join("\n");
+	const narrow = formatTimingRecord(step, false, 60);
 
-	assert.match(compact.split("\n")[0]!, /Σ1\.4k ↑400 ↓60 R900 W10 · \$0\.030$/);
-	assert.doesNotMatch(compact.split("\n").slice(1).join("\n"), /Σ|\$/);
-	assert.equal(narrow.join("\n").match(/Σ/g)?.length, 1);
+	assert.match(compact, /1\.4k tokens · 900 cached · 10 cache write · \$0\.030/);
+	assert.doesNotMatch(compact, /Σ|↑|↓|R900|W10|subagent|research/);
+	assert.equal(narrow.join("\n").match(/tokens/g)?.length, 1);
 	assert.match(narrow.join("\n"), /\$0\.030/);
 	assert.ok(narrow.every((line) => line.length <= 60));
-	assert.match(expanded, /a .* Σ520 ↑100 ↓20 R400 W0 · \$0\.010/);
-	assert.match(expanded, /b .* Σ850 ↑300 ↓40 R500 W10 · \$0\.020/);
+	assert.match(expanded, /1\. subagent · 200ms · success · a/);
+	assert.match(expanded, /2\. research · 300ms · success · b/);
+	assert.match(expanded, /Total:\s+1,370/);
 });
 
 test("labels subscription-backed batch usage without fabricating a price", () => {
@@ -183,8 +186,8 @@ test("labels subscription-backed batch usage without fabricating a price", () =>
 	}
 	const rendered = formatTimingRecord(tracker.finishTurn(0)!, false).join("\n");
 
-	assert.match(rendered.split("\n")[0]!, /Σ240 ↑200 ↓40 R0 W0 · sub$/);
-	assert.doesNotMatch(rendered, /\$/);
+	assert.match(rendered, /240 tokens · subscription/);
+	assert.doesNotMatch(rendered, /\$|Σ|↑|↓|R0|W0/);
 });
 
 test("keeps mixed batch and cycle billing truthful", () => {
@@ -199,18 +202,18 @@ test("keeps mixed batch and cycle billing truthful", () => {
 	tracker.finishTool("subscription", "subagent", subscription, false, at(1_400, 400));
 	tracker.consumeToolResult("metered", metered, false);
 	tracker.consumeToolResult("subscription", subscription, false);
-	const batch = tracker.finishTurn(0)!;
+	const step = tracker.finishTurn(0)!;
 	const cycle = tracker.settle(at(1_500, 500))!;
-	const compact = formatTimingRecord(batch, false, 160).join("\n");
-	const expanded = formatTimingRecord(batch, true, 160).join("\n");
+	const compact = formatTimingRecord(step, false, 160).join("\n");
+	const expanded = formatTimingRecord(step, true, 160).join("\n");
 
-	assert.match(compact.split("\n")[0]!, /Σ970 ↑400 ↓60 R500 W10 · \$0\.020 \+ sub$/);
-	assert.match(formatTimingRecord(batch, false, 160, { showCost: false })[0]!, / · mixed$/);
+	assert.match(compact, /970 tokens · 500 cached · 10 cache write · \$0\.020 \+ subscription$/);
+	assert.match(formatTimingRecord(step, false, 160, { showCost: false }).join("\n"), /mixed billing$/);
 	assert.equal(cycle.billingMode, "mixed");
 	assert.equal(cycle.totalUsage?.cost?.total, 0.02);
-	assert.match(formatTimingRecord(cycle, false, 160).join("\n"), /\$0\.020 \+ sub$/);
-	assert.match(expanded, /metered .* \$0\.020/);
-	assert.match(expanded, /subscription .* sub/);
+	assert.match(formatTimingRecord(cycle, false, 160).join("\n"), /\$0\.020 \+ subscription$/);
+	assert.match(expanded, /research · 200ms · success · metered/);
+	assert.match(expanded, /subagent · 290ms · success · subscription/);
 	assert.doesNotMatch(expanded, /\$0\.990/);
 });
 
@@ -232,7 +235,7 @@ test("prefers bounded direct usage over nested or deeper usage", () => {
 	tracker.consumeToolResult("model", result, false);
 	const record = tracker.finishTurn(0)!;
 
-	assert.equal(record.kind, "tool");
+	assert.equal(record.kind, "step");
 	assert.equal(record.usage?.totalTokens, 12);
 	assert.equal(record.usage?.cost?.total, 0.01);
 });
@@ -253,16 +256,16 @@ test("derives mixed billing from every bounded nested result regardless of order
 		tracker.consumeToolResult("mixed", { usage: result.usage }, false);
 		const record = tracker.finishTurn(0)!;
 
-		assert.equal(record.kind, "tool");
+		assert.equal(record.kind, "step");
 		assert.equal(record.billingMode, "mixed");
 		assert.equal(record.usage?.totalTokens, 990);
 		assert.equal(record.usage?.cost?.total, 0.02);
-		assert.match(formatTimingRecord(record, false).join("\n"), /\$0\.020 \+ sub$/);
+		assert.match(formatTimingRecord(record, false).join("\n"), /\$0\.020 \+ subscription$/);
 		assert.doesNotMatch(formatTimingRecord(record, false).join("\n"), /1\.010/);
 	}
 });
 
-test("keeps failures and model-backed usage attributable in expanded batches", () => {
+test("keeps failures and model-backed usage attributable in expanded Steps", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	tracker.finishAssistant({ stopReason: "toolUse", content: [] }, at(1_050, 60));
@@ -278,15 +281,14 @@ test("keeps failures and model-backed usage attributable in expanded batches", (
 	);
 	tracker.consumeToolResult("read", undefined, true);
 	tracker.consumeToolResult("child", { usage: usage(7_700, 512, 0, 0, 0.027) }, false);
-	const batch = tracker.finishTurn(0)!;
-	const compact = formatTimingRecord(batch, false).join("\n");
-	const expanded = formatTimingRecord(batch, true).join("\n");
+	const step = tracker.finishTurn(0)!;
+	const compact = formatTimingRecord(step, false).join("\n");
+	const expanded = formatTimingRecord(step, true).join("\n");
 
-	assert.match(compact.split("\n")[0]!, /Σ8\.2k ↑7\.7k ↓512 R0 W0 · \$0\.027$/);
-	assert.match(compact, /read · 100ms · failed/);
-	assert.match(compact, /subagent · 3\.40s/);
-	assert.doesNotMatch(compact.split("\n").slice(1).join("\n"), /tok —|Σ|\$/);
-	assert.match(expanded, /child .* Σ8\.2k ↑7\.7k ↓512 R0 W0 · \$0\.027/);
+	assert.match(compact, /2 tools 3\.40s · 1 failure · 8\.2k tokens · \$0\.027/);
+	assert.doesNotMatch(compact, /read|subagent|tok —|Σ|↑|↓|R0|W0/);
+	assert.match(expanded, /2\. subagent · 3\.40s · success · child/);
+	assert.match(expanded, /Total:\s+8,212/);
 });
 
 test("a recovered tool failure keeps the cycle Total while retaining its failure count", () => {
@@ -362,7 +364,7 @@ test("an unrecovered terminal tool failure still marks the cycle Failed", () => 
 	assert.match(formatTimingRecord(cycle, false)[0]!, /^◆ Failed/);
 });
 
-test("keeps a single tool as one compact tool record", () => {
+test("folds a single tool into one compact Step", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	tracker.finishAssistant({ stopReason: "toolUse", content: [] }, at(1_050, 60));
@@ -370,9 +372,10 @@ test("keeps a single tool as one compact tool record", () => {
 	tracker.finishTool("only", "bash", {}, false, at(1_600, 600));
 	tracker.consumeToolResult("only", undefined, false);
 	const record = tracker.finishTurn(0)!;
-	assert.equal(record.kind, "tool");
-	assert.match(formatTimingRecord(record, false)[0]!, /└ bash .* 500ms$/);
-	assert.doesNotMatch(formatTimingRecord(record, true).join("\n"), /tok —|Tokens: —/);
+	assert.equal(record.kind, "step");
+	assert.match(formatTimingRecord(record, false).join("\n"), /◆ Step · 580ms · tool 500ms/);
+	assert.doesNotMatch(formatTimingRecord(record, false).join("\n"), /bash|tok —/);
+	assert.match(formatTimingRecord(record, true).join("\n"), /1\. bash · 500ms · success · only/);
 });
 
 test("computes union tool wall time separately from cumulative work", () => {
@@ -448,8 +451,11 @@ test("renders responsive token breakdowns without exceeding width", () => {
 	);
 	const cycle = tracker.settle(at(2_120, 1_130))!;
 	const cycleText = formatTimingRecord(cycle, false, 60).join("\n");
-	assert.match(cycleText, /1 step/);
-	assert.match(cycleText, /0 tools/);
+	assert.match(cycleText, /model 1\.10s/);
+	assert.doesNotMatch(cycleText, /step|tools|Σ|↑|↓/);
+	const expandedCycle = formatTimingRecord(cycle, true, 40);
+	assert.ok(expandedCycle.every((line) => line.length <= 40));
+	assert.match(expandedCycle.join("\n"), /\d{2}:\d{2}:\d{2}\.120/);
 	assert.equal(formatDuration(42), "42ms");
 	assert.equal(formatUsageCompact(undefined), "tok —");
 });
@@ -464,7 +470,7 @@ test("coerces legacy V1 tool records without adding an unavailable-usage placeho
 		durationMs: 50,
 		status: "success",
 	});
-	assert.equal(legacy?.schemaVersion, 2);
+	assert.equal(legacy?.schemaVersion, 3);
 	assert.equal(legacy?.cycleId, "legacy-v1");
 	assert.doesNotMatch(formatTimingRecord(legacy!, false).join("\n"), /tok —/);
 });
@@ -510,4 +516,87 @@ test("does not invent absent provider usage categories or output speed", () => {
 	const tool = tracker.finishTool("partial", "model-tool", { usage: { input: 25 } }, false, at(2_300, 1_310));
 	assert.ok(tool);
 	assert.equal(formatUsageCompact(tool?.usage), "Σ— ↑25 ↓— R— W—");
+});
+
+test("aggregates assistant and model-backed tool usage once for the whole Step", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.markFirstOutput(0, at(1_110, 120));
+	tracker.finishAssistant(
+		{
+			provider: "openai",
+			stopReason: "toolUse",
+			content: [],
+			usage: usage(100, 20, 400, 0, 0.01),
+		},
+		at(1_210, 220),
+	);
+	const result = { provider: "openai", usage: usage(200, 40, 500, 10, 0.02) };
+	tracker.startTool("model-tool", "research", at(1_220, 230));
+	tracker.finishTool("model-tool", "research", result, false, at(1_520, 530));
+	tracker.consumeToolResult("model-tool", result, false);
+	const step = tracker.finishTurn(0)!;
+
+	assert.equal(step.usage?.totalTokens, 1_270);
+	assert.equal(step.usage?.cost?.total, 0.03);
+	const compact = formatTimingRecord(step, false, 120).join("\n");
+	assert.match(compact, /1\.3k tokens · 900 cached · 10 cache write · \$0\.030/);
+	assert.equal(compact.match(/tokens/g)?.length, 1);
+});
+
+test("keeps exact timestamps and member-level diagnostics out of compact Steps", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.finishAssistant(
+		{ provider: "openai-codex", stopReason: "toolUse", content: [], usage: usage(100, 20, 500) },
+		at(1_100, 110),
+	);
+	tracker.startTool("read-a", "read", at(1_110, 120));
+	tracker.finishTool("read-a", "read", {}, false, at(1_210, 220));
+	tracker.consumeToolResult("read-a", {}, false);
+	const step = tracker.finishTurn(0)!;
+	const compact = formatTimingRecord(step, false, 40);
+	const expanded = formatTimingRecord(step, true, 80).join("\n");
+
+	assert.ok(compact.every((line) => line.length <= 40));
+	assert.doesNotMatch(compact.join("\n"), /read|01:00|wall|work|tok\/s|Σ|↑|↓/);
+	assert.match(expanded, /Time:/);
+	assert.match(expanded, /read · 100ms · success · read-a/);
+});
+
+test("upgrades persisted V2 records without rewriting their meaning", () => {
+	const legacy = coerceTimingRecord({
+		schemaVersion: 2,
+		cycleId: "v2-cycle",
+		sequence: 2,
+		kind: "batch",
+		turnIndex: 0,
+		batchId: "v2-batch",
+		startedAt: 100,
+		endedAt: 200,
+		wallMs: 100,
+		workMs: 180,
+		status: "success",
+		tools: [
+			{
+				schemaVersion: 2,
+				cycleId: "v2-cycle",
+				sequence: 1,
+				kind: "tool",
+				turnIndex: 0,
+				toolCallId: "old",
+				toolName: "read",
+				startedAt: 100,
+				endedAt: 200,
+				durationMs: 100,
+				billingMode: "unknown",
+				status: "success",
+			},
+		],
+	});
+
+	assert.equal(legacy?.schemaVersion, 3);
+	assert.equal(legacy?.sourceSchemaVersion, 2);
+	assert.equal(legacy?.kind, "batch");
+	if (legacy?.kind === "batch") assert.equal(legacy.tools[0]?.sourceSchemaVersion, 2);
 });

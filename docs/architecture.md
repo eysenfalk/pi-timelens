@@ -24,17 +24,22 @@ sequenceDiagram
 
     Pi->>Adapter: input / agent / turn / message / tool events
     Adapter->>Core: monotonic clock readings + bounded metadata
-    Core-->>Adapter: immutable timing records
-    Adapter->>Transcript: append display-only custom entry
+    Core-->>Adapter: assistant + tool contributions
+    Pi->>Adapter: turn_end
+    Adapter->>Core: finish Step
+    Core-->>Adapter: immutable Step record
+    Adapter->>Transcript: append display-only Step
     Adapter-->>Consumer: message-timing:state
     Pi->>Adapter: agent_settled
     Adapter->>Core: settle cycle
-    Core-->>Adapter: cycle total
+    Core-->>Adapter: request Total
 ```
 
 ## Persistence schema
 
-New entries use schema version 2 and stable identities for cycle, sequence, turn, batch, and tool calls. Version-1 records are coerced conservatively for replay: unavailable V2 fields remain unavailable rather than becoming fabricated zeroes.
+New entries use schema version 3. A Step owns one optional assistant contribution plus ordered tool contributions, aggregate usage, billing, status, elapsed duration, tool wall time, and cumulative tool work. Stable cycle, sequence, turn, and tool-call identities remain available for reports and safe exports.
+
+Version-1 and version-2 records are coerced conservatively for replay. Existing sessions are never rewritten, and unavailable fields remain unavailable rather than becoming fabricated zeroes.
 
 The custom entry type remains `message-timing` for compatibility with the original extension. Brand and package names can evolve without orphaning existing Pi sessions.
 
@@ -42,16 +47,17 @@ The custom entry type remains `message-timing` for compatibility with the origin
 
 Pi creates tool UI components before results arrive, while extension custom entries are separate transcript components. Therefore:
 
-- one tool produces one timing entry;
-- multiple tools in one turn produce one consolidated batch entry after the final result;
-- batch members retain source order even when completion order differs;
+- assistant lifecycle data is retained until its turn ends instead of creating a separate compact row;
+- one or many tools join that assistant contribution in one Step after the final result;
+- compact Steps do not repeat tool identities already visible in Pi's native cards;
+- expanded tool members retain source order even when completion order differs;
 - cycle totals append only after settlement.
 
 Deferred appends are cancelled on shutdown and session replacement, preventing stale records from leaking into another session.
 
 ## Test strategy
 
-- Pure core tests cover clocks, TTFT, usage presence, direct and nested model-backed tool accounting, concurrency math, failure recovery, aborts, formatting, and V1 compatibility.
+- Pure core tests cover clocks, first-output latency, Step aggregation, usage presence, direct and nested model-backed tool accounting, concurrency math, failure recovery, aborts, responsive formatting, and V1/V2 compatibility.
 - Runtime tests drive synthetic Pi lifecycle events, timers, session replacement, settings, and entry ordering.
 - Reporting tests cover branch selection, de-duplication, hostile unknown fields, summary math, JSON, and CSV.
 - Package checks inspect the npm tarball allowlist and forbid runtime install hooks.

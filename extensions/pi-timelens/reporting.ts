@@ -38,12 +38,20 @@ export interface TimingSummary {
 
 export function timingRecordsFromEntries(entries: readonly unknown[]): TimingRecord[] {
 	const records: TimingRecord[] = [];
+	let legacyCycleIndex = 0;
 	for (const value of entries) {
 		if (!value || typeof value !== "object") continue;
 		const entry = value as Record<string, unknown>;
 		if (entry.type !== "custom" || entry.customType !== "message-timing") continue;
 		const record = coerceTimingRecord(entry.data);
-		if (record) records.push(record);
+		if (!record) continue;
+		if (record.sourceSchemaVersion !== 1) {
+			records.push(record);
+			continue;
+		}
+		const legacy = { ...record, cycleId: `legacy-v1-${legacyCycleIndex}` } as TimingRecord;
+		records.push(legacy);
+		if (legacy.kind === "cycle") legacyCycleIndex += 1;
 	}
 	return records;
 }
@@ -52,7 +60,7 @@ export function toolsFromRecords(records: readonly TimingRecord[]): ToolTimingRe
 	const tools: ToolTimingRecord[] = [];
 	for (const record of records) {
 		if (record.kind === "tool") tools.push(record);
-		else if (record.kind === "batch") tools.push(...record.tools);
+		else if (record.kind === "batch" || record.kind === "step") tools.push(...record.tools);
 	}
 	return tools;
 }
@@ -67,7 +75,11 @@ function percentile(values: number[], ratio: number): number | undefined {
 export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary {
 	const cycles = records.filter((record): record is CycleTimingRecord => record.kind === "cycle");
 	const v2Cycles = cycles.filter((record) => record.sourceSchemaVersion !== 1);
-	const assistants = records.filter((record): record is AssistantTimingRecord => record.kind === "assistant");
+	const assistants = records.flatMap((record): AssistantTimingRecord[] => {
+		if (record.kind === "assistant") return [record];
+		if (record.kind === "step" && record.assistant) return [record.assistant];
+		return [];
+	});
 	const coveredCycleIds = new Set(v2Cycles.map((record) => record.cycleId));
 	const uncoveredAssistants = assistants.filter(
 		(record) => record.sourceSchemaVersion === 1 || !coveredCycleIds.has(record.cycleId),
@@ -76,7 +88,9 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 	const uncoveredTools = tools.filter(
 		(record) => record.sourceSchemaVersion === 1 || !coveredCycleIds.has(record.cycleId),
 	);
-	const completedCycleIds = new Set(cycles.map((record) => record.cycleId));
+	const completedCycleIds = new Set(
+		cycles.filter((record) => record.totalUsage !== undefined).map((record) => record.cycleId),
+	);
 	const usageSources = [
 		...cycles.map((record) => ({ usage: record.totalUsage, billingMode: record.billingMode })),
 		...assistants
@@ -194,6 +208,16 @@ export function formatTimeline(records: readonly TimingRecord[]): string[] {
 			);
 			for (const tool of record.tools)
 				lines.push(`              └ ${tool.toolName}  ${formatDuration(tool.durationMs)}  ${tool.status}`);
+		} else if (record.kind === "step") {
+			lines.push(`${formatTimestamp(record.startedAt)}  step   ${formatDuration(record.durationMs)}  ${record.status}`);
+			if (record.assistant) {
+				lines.push(
+					`              └ model  ${formatDuration(record.assistant.durationMs)}  ${formatUsageCompact(record.assistant.usage)}`,
+				);
+			}
+			for (const tool of record.tools) {
+				lines.push(`              └ ${tool.toolName}  ${formatDuration(tool.durationMs)}  ${tool.status}`);
+			}
 		} else if (record.kind === "cycle") {
 			lines.push(`${formatTimestamp(record.endedAt)}  cycle  ${formatDuration(record.durationMs)}  ${record.status}`);
 		}
@@ -202,7 +226,7 @@ export function formatTimeline(records: readonly TimingRecord[]): string[] {
 	return lines;
 }
 
-function safeUsage(usage: UsageSnapshot | undefined): Record<string, unknown> | undefined {
+function safeUsage(usage: UsageSnapshot | undefined, billingMode: BillingMode): Record<string, unknown> | undefined {
 	if (!usage) return undefined;
 	const field = (name: "input" | "output" | "cacheRead" | "cacheWrite" | "totalTokens") =>
 		usage.reported?.[name] === false ? undefined : usage[name];
@@ -212,7 +236,7 @@ function safeUsage(usage: UsageSnapshot | undefined): Record<string, unknown> | 
 		cacheRead: field("cacheRead"),
 		cacheWrite: field("cacheWrite"),
 		totalTokens: field("totalTokens"),
-		cost: usage.cost ? { total: usage.cost.total } : undefined,
+		cost: billingMode === "subscription" || !usage.cost ? undefined : { total: usage.cost.total },
 	};
 }
 
@@ -239,7 +263,7 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 			ttftMs: record.ttftMs,
 			streamingMs: record.streamingMs,
 			outputTokensPerSecond: record.outputTokensPerSecond,
-			usage: safeUsage(record.usage),
+			usage: safeUsage(record.usage, record.billingMode),
 			provider: record.provider,
 			model: record.model,
 			billingMode: record.billingMode,
@@ -254,7 +278,7 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 			startedAt: record.startedAt,
 			endedAt: record.endedAt,
 			durationMs: record.durationMs,
-			usage: safeUsage(record.usage),
+			usage: safeUsage(record.usage, record.billingMode),
 			billingMode: record.billingMode,
 			status: record.status,
 		};
@@ -269,6 +293,21 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 			workMs: record.workMs,
 			status: record.status,
 			tools: record.tools.map((tool) => safeExportRecord(tool)),
+		};
+	if (record.kind === "step")
+		return {
+			...base,
+			turnIndex: record.turnIndex,
+			startedAt: record.startedAt,
+			endedAt: record.endedAt,
+			durationMs: record.durationMs,
+			assistant: record.assistant ? safeExportRecord(record.assistant) : undefined,
+			toolWallMs: record.toolWallMs,
+			toolWorkMs: record.toolWorkMs,
+			tools: record.tools.map((tool) => safeExportRecord(tool)),
+			usage: safeUsage(record.usage, record.billingMode),
+			billingMode: record.billingMode,
+			status: record.status,
 		};
 	return {
 		...base,
@@ -285,9 +324,9 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 		submissions: record.submissions,
 		userWaitMs: record.userWaitMs,
 		retryWaitMs: record.retryWaitMs,
-		assistantUsage: safeUsage(record.assistantUsage),
-		toolUsage: safeUsage(record.toolUsage),
-		totalUsage: safeUsage(record.totalUsage),
+		assistantUsage: safeUsage(record.assistantUsage, record.billingMode),
+		toolUsage: safeUsage(record.toolUsage, record.billingMode),
+		totalUsage: safeUsage(record.totalUsage, record.billingMode),
 		billingMode: record.billingMode,
 		status: record.status,
 	};
@@ -309,6 +348,8 @@ export function exportTimingCsv(records: readonly TimingRecord[]): string {
 		"sequence",
 		"kind",
 		"turnIndex",
+		"stepId",
+		"parentStepId",
 		"batchId",
 		"toolCallId",
 		"toolName",
@@ -326,34 +367,50 @@ export function exportTimingCsv(records: readonly TimingRecord[]): string {
 		"cost",
 	];
 	const rows: unknown[][] = [header];
-	const add = (record: TimingRecord, batchId?: string) => {
-		const usage = record.kind === "cycle" ? record.totalUsage : "usage" in record ? record.usage : undefined;
+	const add = (record: TimingRecord, batchId?: string, parentStepId?: string) => {
+		const usage =
+			record.kind === "cycle"
+				? record.totalUsage
+				: record.kind === "step"
+					? record.usage
+					: "usage" in record
+						? record.usage
+						: undefined;
+		const stepId = record.kind === "step" ? `${record.cycleId}:turn-${record.turnIndex}` : "";
+		const billingMode = "billingMode" in record ? record.billingMode : "unknown";
 		rows.push([
 			record.schemaVersion,
 			record.cycleId,
 			record.sequence,
 			record.kind,
 			"turnIndex" in record ? record.turnIndex : "",
+			stepId,
+			parentStepId ?? "",
 			batchId ?? (record.kind === "batch" ? record.batchId : ""),
 			record.kind === "tool" ? record.toolCallId : "",
 			record.kind === "tool" ? record.toolName : "",
 			"startedAt" in record ? record.startedAt : record.submittedAt,
 			"endedAt" in record ? record.endedAt : "",
 			"durationMs" in record ? record.durationMs : "",
-			record.kind === "batch" ? record.wallMs : "",
-			record.kind === "batch" ? record.workMs : "",
+			record.kind === "batch" ? record.wallMs : record.kind === "step" ? record.toolWallMs : "",
+			record.kind === "batch" ? record.workMs : record.kind === "step" ? record.toolWorkMs : "",
 			"status" in record ? record.status : "",
 			usage?.reported?.input === false ? undefined : usage?.input,
 			usage?.reported?.output === false ? undefined : usage?.output,
 			usage?.reported?.cacheRead === false ? undefined : usage?.cacheRead,
 			usage?.reported?.cacheWrite === false ? undefined : usage?.cacheWrite,
 			usage?.reported?.totalTokens === false ? undefined : usage?.totalTokens,
-			usage?.cost?.total,
+			billingMode === "subscription" ? undefined : usage?.cost?.total,
 		]);
 	};
 	for (const record of records) {
 		add(record);
 		if (record.kind === "batch") for (const tool of record.tools) add(tool, record.batchId);
+		if (record.kind === "step") {
+			const stepId = `${record.cycleId}:turn-${record.turnIndex}`;
+			if (record.assistant) add(record.assistant, undefined, stepId);
+			for (const tool of record.tools) add(tool, undefined, stepId);
+		}
 	}
 	return `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`;
 }

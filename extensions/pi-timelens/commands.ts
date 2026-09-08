@@ -30,19 +30,19 @@ export interface TimingCommandDependencies {
 const LEGEND = [
 	"Timing legend",
 	"",
-	"Σ  total tokens",
-	"↑  input tokens",
-	"↓  output tokens",
-	"R  cache-read tokens",
-	"W  cache-write tokens",
-	"TTFT  time to first provider output",
-	"wall  elapsed batch time",
-	"work  sum of individual tool durations",
-	"tok —  no provider usage was reported",
+	"Step  one model turn and its tools",
+	"Total  the complete request cycle",
+	"first  time to first provider output",
+	"tools  elapsed tool wall time",
+	"cached  provider-reported cache-read tokens",
+	"subscription  usage without a fabricated metered price",
+	"",
+	"Expand a timing entry for exact timestamps, model streaming speed,",
+	"individual tool durations, cumulative work, and the full token breakdown.",
 ];
 
 const HELP = [
-	"Message Timing V2",
+	"Pi TimeLens",
 	"",
 	"/timing summary",
 	"/timing timeline",
@@ -54,7 +54,7 @@ const HELP = [
 
 export function registerTimingCommands(pi: CommandPi, dependencies: TimingCommandDependencies): void {
 	pi.registerCommand("timing", {
-		description: "Show Message Timing summaries, settings, timeline, legend, or safe exports",
+		description: "Show Pi TimeLens summaries, settings, timeline, legend, or safe exports",
 		handler: async (args, ctx) => {
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const action = parts[0]?.toLowerCase() ?? "help";
@@ -105,7 +105,7 @@ export function registerTimingCommands(pi: CommandPi, dependencies: TimingComman
 				ctx.ui.notify(`Timing export written to ${path}`, "info");
 				return;
 			}
-			await dependencies.showPanel(ctx, "Message Timing V2", HELP);
+			await dependencies.showPanel(ctx, "Pi TimeLens", HELP);
 		},
 	});
 }

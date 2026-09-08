@@ -2,7 +2,7 @@
 
 # Pi TimeLens
 
-**Every turn. Every tool. Every token.**
+**Know where the time and tokens went.**
 
 Local timing and token observability for the [Pi coding agent](https://github.com/badlogic/pi-mono).
 
@@ -12,7 +12,7 @@ Local timing and token observability for the [Pi coding agent](https://github.co
 
 </div>
 
-Pi TimeLens makes agent latency legible. It measures assistant TTFT and streaming time, shows provider-reported token categories and output speed, separates parallel tool wall time from cumulative work, and closes each request with one coherent total. Everything stays local, display-only, and outside model context.
+Pi TimeLens makes agent latency legible without repeating Pi's transcript. Each model turn and its tools become one concise **Step** with elapsed time, first-output latency, tool wall time, tokens, and truthful billing. Each request closes with one **Total** that answers whether time went to the model or tools. Exact timestamps, throughput, per-tool timing, and full token categories remain one expansion away. Everything stays local, display-only, and outside model context.
 
 > [!IMPORTANT]
 > This public repository contains the reviewed `1.0.0` release candidate. npm publication remains separately gated; the registry install command below becomes available with that release.
@@ -44,42 +44,30 @@ _Faithful transcript redraws from real Pi 0.85.1 sessions at desktop and narrow 
 
 | Lens | What it reveals |
 | --- | --- |
-| Assistant | Total duration, TTFT, streaming time, provider-reported output tokens/s, usage, and cost or subscription mode |
-| Tools | Individual duration and status; model-backed usage appears only when a tool reports it |
-| Batches | One source-ordered record after the last tool, with `wall`, `work`, and one aggregate of reported nested usage and cost |
-| Cycle | Full request duration, model time, tool wall/work, retry wait, user wait, status, and aggregate usage |
-| Session | Current-branch summary, timeline, safe JSON/CSV export, and content-free live telemetry for footer integrations |
+| Live | Current phase and elapsed time while Pi is working |
+| Step | One model turn plus its tools: duration, first output, tool wall time, provider-reported tokens, and truthful billing |
+| Total | Full request duration split into model and tool time, with aggregate usage and recovery status |
+| Details | Exact timestamps, streaming time, output speed, cumulative tool work, ordered tool timings, full token categories, model, and stop reason |
+| Session | Current-branch summary, timeline, safe JSON/CSV export, and content-free footer telemetry |
 
 ```text
-└ 12:07:13.442–12:07:16.152 · 2.71s · TTFT 820ms · 53.0 tok/s
-  Σ9.9k ↑1.5k ↓284 R8.1k W0 · $0.0030
+◆ Step · 12.1s · first 5.57s · 7 tools 56ms
+  282k tokens · 275k cached · subscription
 
-◆ Batch · 3 tools · wall 393ms · work 690ms
-  1. read · 181ms
-  2. bash · 393ms
-  3. read · 116ms
-
-◆ Total · 12:07:13.442–12:07:26.382 · 12.94s · 2 steps · 3 tools
-  Σ22.3k ↑20.1k ↓904 R1.3k W0 · sub
+◆ Total · 20.2s · model 19.4s · tools 119ms
+  368k tokens · 360k cached · subscription
 ```
 
-Token symbols are optimized for narrow terminals:
-
-- `Σ` total
-- `↑` input
-- `↓` output
-- `R` cache read
-- `W` cache write
-
-Pi TimeLens never estimates missing provider data. Ordinary tools omit token noise entirely. When model-backed tools report usage, their batch gets one combined token-and-price total:
+Pi's native tool cards already show which tool ran, its target, and its result. Compact TimeLens output therefore does not repeat `read`, `edit`, or every member of a parallel group. A single tool is folded into its Step just like a parallel group:
 
 ```text
-◆ Batch · 2 tools · wall 300ms · work 500ms · Σ1.4k ↑400 ↓60 R900 W10 · $0.030
-  1. subagent · 200ms
-  2. research · 300ms
+◆ Step · 8.60s · first 5.21s · tool 56ms
+  86k tokens · 85k cached · subscription
 ```
 
-`Ctrl+O` reveals the contributing tool totals. Assistant-step usage remains separate, so it is not misattributed or counted twice. A dash means unavailable, not zero.
+For a metered Step, the provider-reported price appears instead of a subscription label. When metered and subscription sources mix, TimeLens shows only the metered subtotal plus `subscription`. Ordinary tools add no invented token usage; model-backed tools contribute only usage they report, exactly once, to the whole Step.
+
+Press `Ctrl+O` to reveal the model and individual tool contributions, exact times, `wall` versus cumulative `work`, output tokens/s, and complete input/output/cache categories. Missing provider fields stay unavailable rather than becoming fabricated zeros.
 
 ## Commands
 
@@ -103,10 +91,10 @@ See [Commands and settings](docs/commands.md) for examples and defaults.
 
 - **Monotonic durations:** system clock adjustments cannot create negative or inflated elapsed times.
 - **Provider truth only:** absent usage and cost fields remain unavailable; TimeLens does not fabricate zeros.
-- **Correct concurrency:** batch `wall` is the union of tool execution intervals; `work` is their sum.
+- **Correct concurrency:** compact Steps show elapsed tool wall time; expanded details distinguish the interval union (`wall`) from the duration sum (`work`).
 - **Recoverable failures:** a later successful assistant step restores `◆ Total` while failure counts remain visible; aborts stay sticky.
 - **Branch-aware reports:** summaries, timelines, and exports use only the active session branch.
-- **Schema compatibility:** V2 records are stable and legacy V1 timing entries remain readable.
+- **Schema compatibility:** new Step records use V3; legacy V1 and V2 timing entries remain readable without rewriting sessions.
 - **Responsive output:** compact rendering budgets every line for narrow terminals.
 
 Metric definitions and edge cases are documented in [Metrics](docs/metrics.md). The reproducible microbenchmark and its limits are in [Performance](docs/performance.md).
@@ -163,16 +151,23 @@ Read [Contributing](CONTRIBUTING.md) before opening a pull request. Releases fol
 ## FAQ
 
 <details>
-<summary>Why doesn't an ordinary tool show tokens or price?</summary>
+<summary>Why is there no separate timing row for every ordinary tool?</summary>
 
-Reading a file or running a shell command does not itself consume model tokens. TimeLens omits an irrelevant placeholder rather than printing `tok —`. The assistant step that requested the tool retains its own provider-reported usage; model-backed tools contribute their separately reported usage to one batch total.
+Pi's native tool card already identifies the tool, target, and outcome. TimeLens folds its elapsed time into the surrounding Step instead of repeating that information. Expand the Step when you need the individual duration and tool-call ID.
 
 </details>
 
 <details>
-<summary>Why can batch work exceed wall time?</summary>
+<summary>Why can expanded tool work exceed wall time?</summary>
 
-Parallel tools overlap. `wall` measures elapsed time across the union of their intervals; `work` adds each tool's duration. Three 1-second tools run concurrently can produce roughly 1 second wall and 3 seconds work.
+Parallel tools overlap. Expanded `wall` measures elapsed time across the union of their intervals; `work` adds each tool's duration. Three 1-second tools run concurrently can produce roughly 1 second wall and 3 seconds work.
+
+</details>
+
+<details>
+<summary>What does a Step's token and price total include?</summary>
+
+The assistant call and any model-backed tools in that turn, using only provider-reported values. Ordinary tools add time but no token usage. Mixed billing includes all reported tokens while showing only the metered subtotal plus a subscription label.
 
 </details>
 

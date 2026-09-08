@@ -1,8 +1,43 @@
 # Release evaluation — 1.0.0-rc.0
 
-Evaluation date: 2026-09-07. Status: public GitHub `1.0.0-rc.0` source candidate; npm publication was not authorized and has not been performed.
+Evaluation date: 2026-09-08. Status: isolated Step/Total UX candidate; npm publication was not authorized and has not been performed.
 
-## Scope and invariants
+## Step/Total UX candidate
+
+GitHub issue: [#4 — Replace lifecycle-oriented timing rows with user-centered Step/Total summaries](https://github.com/eysenfalk/pi-timelens/issues/4)
+
+### Decision target
+
+Replace the compact Assistant/Tool/Batch hierarchy with one Step per model turn and one cycle Total. A Step combines the model call with the tools it requested, surfaces only actionable defaults, and keeps timestamps, per-tool attribution, throughput, provider/model identifiers, and full usage breakdowns behind Pi's standard `Ctrl+O` expansion.
+
+### Deterministic gates
+
+- `npm run check`: 56 tests pass on Node 24; TypeScript, Biome, documentation, workflow, package, and source-parity checks pass.
+- `npm run smoke:packed`: an exact `pi-timelens-1.0.0-rc.0.tgz` installs offline into a fresh Pi home and registers `/timing` exactly once.
+- `npm pack --dry-run --json`: 22 intended files, 168,235 unpacked bytes; raw ANSI logs, screenshots, temporary fixtures, tests, and repository-only evaluation files stay out of the package.
+- Schema V3 persists Step records while coercing V1 and V2 records for replay, reporting, and safe export.
+- Regression coverage exercises model-only, single-tool, parallel-tool, model-backed-tool, mixed-billing, failure, abort, retry recovery, session replay, export, command, and 40-column wrapping paths.
+
+### Real Pi evidence
+
+- Installed Pi: `@earendil-works/pi-coding-agent@0.85.1`.
+- Provider-backed checks used `openai-codex/gpt-5.4-mini:low` with two fixture reads in a parallel batch.
+- Isolated 120- and 40-column PTY sessions loaded only the candidate and produced two Step records followed by one Total; compact output omitted tool names, call IDs, exact timestamps, wall/work jargon, and unavailable placeholders.
+- `Ctrl+O` exposed model timing, first output, streaming, throughput, exact timestamps, per-tool duration/status/call ID, usage categories, provider/model, and stop reason. Expanded 40-column Total timestamps wrap without truncation.
+- Fresh 120- and 40-column full-profile sessions loaded the candidate exactly once beside the active extension set and Powerline footer. No duplicate timing entry was emitted.
+- Raw `PI_TUI_WRITE_LOG` captures and temporary screenshots remain under ignored `.artifacts/step-ux/`. Sanitized 120-/40-column fixtures preserve observed compact transcript text and values, record raw-capture hashes and omissions, and drive updated faithful-redraw SVG/WebP gallery assets.
+
+### Champion comparison
+
+The unchanged installed champion at `31730d43f82ad3311f76b7d8ed661ff24d029df5` still passes its 51-test suite. Its benchmark measured 4.27 µs/cycle; the candidate measured 4.67 µs/cycle in the same local run (+0.40 µs, about 9%). Both are far below the 500 µs/cycle budget. The candidate adds one persisted Step object per assistant turn but removes separate assistant and tool/batch transcript entries from new sessions, producing materially less visible telemetry and no duplicate compact tool inventory.
+
+### Independent review and current boundary
+
+The first code review blocked on legacy V1 usage suppression and subscription cost leakage in exports. Both root causes received focused regressions; the same reviewer rechecked the fixes and returned `DEPLOY`. Independent visual review found no compact or expanded 120-/40-column UX defect and returned `DEPLOY`; its only stated limit was the absence of a captured error-state screenshot, which remains covered deterministically.
+
+The candidate is isolated on `ux/step-summary`. It has not been installed into the active Pi home, pushed, merged, tagged, or published to npm. Promotion and publication remain separate decisions.
+
+## Original release scope and invariants
 
 Pi TimeLens packages the already deployed Message Timing V2 behavior as a standalone Pi package. Timing remains monotonic, provider values remain report-only, custom entries remain display-only, exports remain allowlisted, multi-tool turns remain consolidated, and telemetry remains process-local and content-free.
 

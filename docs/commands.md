@@ -10,11 +10,11 @@ Shows aggregate cycles, assistant steps, tools, failures, aborts, model and tool
 
 ### `/timing timeline`
 
-Shows source-ordered assistant, single-tool, batch, and cycle records. A batch appears once and contains one attributed member row per tool. Compact mode shows one aggregate for reported model-backed usage; `Ctrl+O` keeps the reporting tool totals attributable.
+Shows source-ordered Step and cycle records. Each Step contains its model turn and ordered tool contributions; legacy assistant, tool, and batch entries remain readable. The timeline is intentionally diagnostic and keeps member-level attribution.
 
 ### `/timing legend`
 
-Explains duration and token notation.
+Explains Step, Total, first-output latency, tool wall time, cached tokens, billing, and expanded diagnostics.
 
 ## Display settings
 
@@ -33,10 +33,10 @@ Explains duration and token notation.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `display` | `compact` | Transcript timing density: compact, always detailed, or hidden |
+| `display` | `compact` | Concise Step/Total summaries, always-expanded diagnostics, or hidden transcript timing |
 | `live` | `on` | Show the content-free live phase and elapsed time |
 | `cost` | `on` | Show provider-reported cost when available |
-| `milliseconds` | `on` | Preserve millisecond precision for short durations |
+| `milliseconds` | `on` | Preserve milliseconds in expanded wall-clock timestamps; short elapsed durations remain precise |
 
 Settings are stored as JSON in `message-timing.json` under `PI_CODING_AGENT_DIR`, which defaults to `~/.pi/agent`.
 
@@ -47,7 +47,7 @@ Settings are stored as JSON in `message-timing.json` under `PI_CODING_AGENT_DIR`
 /timing export csv
 ```
 
-Exports include bounded timing metadata: schema and record identities, timestamps, durations, status, tool names and IDs, numeric usage, numeric cost, and billing mode. Explicit allowlists strip unknown top-level and nested fields.
+Exports include bounded timing metadata: schema and record identities, Step relationships, timestamps, durations, status, tool names and IDs, numeric usage, numeric cost, and billing mode. JSON nests model and tool contributions under each Step; CSV links child rows with `parentStepId`. Explicit allowlists strip unknown top-level and nested fields.
 
 Files are written with mode `0600` to:
 

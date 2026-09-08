@@ -1,41 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="440" height="694" viewBox="0 0 440 694" role="img" aria-labelledby="title desc" xml:space="preserve">
-  <title id="title">Pi TimeLens in a real narrow Pi terminal</title>
-  <desc id="desc">A selected successful-turn transcript crop from Pi 0.85.1 at 40 columns. Responsive TimeLens output wraps complete timing and token segments without empty tool placeholders.</desc>
-  <metadata>Selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-07. Successful-turn transcript text, wrapping, ordering, and theme colors are preserved; startup, transient working/status UI, update notice, footer, model identifier, and filesystem path are omitted.</metadata>
-  <rect width="440" height="694" fill="#09090b"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="620" viewBox="0 0 440 620" role="img" aria-labelledby="title desc" xml:space="preserve">
+  <title id="title">Pi TimeLens Step summaries in a real narrow Pi terminal</title>
+  <desc id="desc">A faithful transcript redraw from Pi 0.85.1 at 40 columns. Compact Step and Total summaries reflow into complete timing, token, cache, and subscription segments without repeating individual tool timing rows.</desc>
+  <metadata>Faithful redraw of tests/fixtures/real-pi-40.txt, selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-08. Raw capture SHA-256: 897784db081847b127d167c0262b34be2c552b100aac86acb65da71d9fb6624b. Transcript text, wrapping, ordering, measured values, and theme roles are preserved; startup, transient working/status UI, update notice, footer, model identifier, filesystem path, and assistant reasoning are omitted.</metadata>
+  <rect width="440" height="620" fill="#09090b"/>
 
   <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="14" fill="#d4d4d4">
     <text x="20" y="18" font-size="11" fill="#8abeb7">Pi TimeLens · faithful transcript · 40 columns</text>
     <g transform="translate(0 24)">
-    <rect x="20" y="18" width="400" height="94" fill="#343541"/>
-    <text x="30" y="42">Use the read tool to read auth.ts and</text>
-    <text x="30" y="64">config.ts in one parallel tool batch,</text>
-    <text x="30" y="86">then reply with exactly: Verified both</text>
-    <text x="30" y="108">files.</text>
-    <text x="20" y="140" fill="#666666">└ sent 23:26:02.945</text>
+      <rect x="20" y="18" width="400" height="110" fill="#343541"/>
+      <text x="30" y="42">Use the read tool to read auth.ts and</text>
+      <text x="30" y="64">config.ts in one parallel tool batch. Do</text>
+      <text x="30" y="86">not call any other tools. Then reply</text>
+      <text x="30" y="108">with exactly: Verified both files.</text>
 
-    <rect x="20" y="160" width="400" height="46" fill="#283228"/>
-    <text x="30" y="187"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> auth.ts</tspan></text>
-    <rect x="20" y="216" width="400" height="46" fill="#283228"/>
-    <text x="30" y="243"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> config.ts</tspan></text>
+      <rect x="20" y="148" width="400" height="46" fill="#283228"/>
+      <text x="30" y="175"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> auth.ts</tspan></text>
+      <rect x="20" y="204" width="400" height="46" fill="#283228"/>
+      <text x="30" y="231"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> config.ts</tspan></text>
 
-    <text x="20" y="288" fill="#666666">└ 23:26:02.947–23:26:04.539 · 1.59s</text>
-    <text x="20" y="310" fill="#666666">  TTFT 1.57s · 3768.3 tok/s</text>
-    <text x="20" y="332" fill="#666666">  Σ1.6k ↑1.5k ↓95 R0 W0 · sub</text>
+      <text x="20" y="290" fill="#b5bd68">◆ Step · 2.52s · first 2.06s</text>
+      <text x="20" y="312" fill="#b5bd68">  2 tools 7ms · 1.1k tokens</text>
+      <text x="20" y="334" fill="#b5bd68">  subscription</text>
 
-    <text x="20" y="372" fill="#b5bd68">◆ Batch · 2 tools · wall 17ms</text>
-    <text x="20" y="394" fill="#b5bd68">  work 26ms</text>
-    <text x="20" y="416" fill="#666666">  1. read · 15ms</text>
-    <text x="20" y="438" fill="#666666">  2. read · 11ms</text>
+      <text x="20" y="376">Verified both files.</text>
 
-    <text x="20" y="478">Verified both files.</text>
-    <text x="20" y="512" fill="#666666">└ 23:26:04.561–23:26:07.442 · 2.88s</text>
-    <text x="20" y="534" fill="#666666">  TTFT 2.84s · 552.6 tok/s</text>
-    <text x="20" y="556" fill="#666666">  Σ1.7k ↑266 ↓22 R1.4k W0 · sub</text>
+      <text x="20" y="416" fill="#b5bd68">◆ Step · 2.90s · first 2.79s</text>
+      <text x="20" y="438" fill="#b5bd68">  1.1k tokens · 1k cached</text>
+      <text x="20" y="460" fill="#b5bd68">  subscription</text>
 
-    <text x="20" y="596" fill="#b5bd68">◆ Total · 23:26:02.945–23:26:07.443</text>
-    <text x="20" y="618" fill="#b5bd68">  4.50s · 2 steps · 2 tools</text>
-    <text x="20" y="640" fill="#b5bd68">  Σ3.3k ↑1.8k ↓117 R1.4k W0 · sub</text>
+      <text x="20" y="502" fill="#b5bd68">◆ Total · 5.43s · model 5.42s</text>
+      <text x="20" y="524" fill="#b5bd68">  tools 7ms · 2.2k tokens</text>
+      <text x="20" y="546" fill="#b5bd68">  1k cached · subscription</text>
     </g>
   </g>
 </svg>

@@ -1,22 +1,20 @@
 # Pi TimeLens capture evidence
-# Pi 0.85.1 · 120 columns · successful turn · 2026-09-07
+# Pi 0.85.1 · 120 columns · successful turn · 2026-09-08
 # Sanitized omissions: startup UI, transient working/status UI, update notice,
-# footer, model identifier, and filesystem path. Transcript text and line wrapping are unchanged.
+# footer, model identifier, filesystem path, and assistant reasoning. Transcript
+# text, TimeLens values, order, and line wrapping are unchanged.
+# Raw capture SHA-256: 2ebe64754733226cdd5c007fc1c4d9cecc8a0b4892c5b4c209d6109d22b80ce2
 
-Use the read tool to read auth.ts and config.ts in one parallel tool batch, then reply with exactly: Verified both
-files.
-└ sent 22:24:10.332
+Use the read tool to read auth.ts and config.ts in one parallel tool batch. Do not call any other tools. Then reply with
+exactly: Verified both files.
 
 read auth.ts
 read config.ts
 
-└ 22:24:10.335–22:24:12.029 · 1.69s · TTFT 1.68s · 4870.5 tok/s · Σ1.6k ↑1.5k ↓88 R0 W0 · sub
-
-◆ Batch · 2 tools · wall 11ms · work 18ms
-  1. read · 10ms
-  2. read · 8ms
+◆ Step · 2.62s · first 2.22s · 2 tools 6ms · 1.1k tokens · subscription
 
 Verified both files.
-└ 22:24:12.043–22:24:15.289 · 3.25s · TTFT 3.19s · 154.9 tok/s · Σ1.7k ↑259 ↓8 R1.4k W0 · sub
 
-◆ Total · 22:24:10.332–22:24:15.290 · 4.96s · 2 steps · 2 tools · Σ3.3k ↑1.8k ↓96 R1.4k W0 · sub
+◆ Step · 4.79s · first 3.81s · 1.1k tokens · 1k cached · subscription
+
+◆ Total · 7.42s · model 7.40s · tools 6ms · 2.3k tokens · 1k cached · subscription

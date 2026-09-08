@@ -193,7 +193,7 @@ export function registerMessageTiming(
 				showMilliseconds: settings.showMilliseconds,
 			});
 			return lines.map((line, index) => {
-				if ((record.kind === "cycle" || record.kind === "batch") && index === 0) {
+				if ((record.kind === "cycle" || record.kind === "batch" || record.kind === "step") && index === 0) {
 					const status = record.status;
 					const color = status === "success" ? "success" : status === "aborted" ? "warning" : "error";
 					return theme.fg(color, line);
@@ -255,7 +255,7 @@ export function registerMessageTiming(
 			return;
 		}
 		if (event.message.role === "assistant") {
-			appendLater(tracker.finishAssistant(event.message as Record<string, unknown>, at));
+			tracker.finishAssistant(event.message as Record<string, unknown>, at);
 			return;
 		}
 		if (event.message.role === "toolResult") {
@@ -264,8 +264,8 @@ export function registerMessageTiming(
 	});
 
 	pi.on("turn_end", (event) => {
-		const toolRecord = tracker.finishTurn(event.turnIndex);
-		if (toolRecord) appendLater(toolRecord);
+		const stepRecord = tracker.finishTurn(event.turnIndex);
+		if (stepRecord) appendLater(stepRecord);
 		if (activeTurnIndex === event.turnIndex) activeTurnIndex = -1;
 	});
 

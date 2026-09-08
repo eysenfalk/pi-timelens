@@ -17,7 +17,8 @@ assert.deepEqual(broken, [], `broken local Markdown links:\n${broken.join("\n")}
 
 const readme = readFileSync(join(root, "README.md"), "utf8");
 assert.match(readme, /pi install npm:pi-timelens/u);
-assert.match(readme, /Every turn\. Every tool\. Every token\./u);
+assert.match(readme, /Know where the time and tokens went\./u);
+assert.match(readme, /one concise \*\*Step\*\*/u);
 assert.match(readme, /docs\/development-workflow\.md/u);
 for (const asset of ["demo.svg", "demo-mobile.svg", "gallery.webp", "gallery-mobile.webp"]) {
 	assert.ok(existsSync(join(root, "media", asset)), `README gallery asset is missing: ${asset}`);
@@ -26,13 +27,21 @@ for (const source of ["demo.svg", "demo-mobile.svg"]) {
 	const svg = readFileSync(join(root, "media", source), "utf8");
 	assert.match(svg, /real Pi 0\.85\.1 TUI session/u);
 	assert.match(svg, /Pi TimeLens · faithful(?: .*?)? transcript · (?:120|40) columns/u);
-	assert.match(svg, /footer, model identifier, and filesystem path are omitted/u);
-	assert.doesNotMatch(svg, /tok —|✓ read/u, `${source} must not restore illustrative tool output`);
+	assert.match(svg, /footer, model identifier, filesystem path, and assistant reasoning are omitted/u);
+	assert.match(svg, /◆ Step/u, `${source} must show the compact Step UX`);
+	assert.doesNotMatch(
+		svg,
+		/◆ Batch|└ sent|tok —|✓ read|\d+\. read/u,
+		`${source} must not restore redundant compact timing rows`,
+	);
 }
 for (const capture of ["real-pi-120.txt", "real-pi-40.txt"]) {
 	const capturePath = join(root, "tests", "fixtures", capture);
 	assert.ok(existsSync(capturePath), `capture evidence is missing: ${capture}`);
-	assert.match(readFileSync(capturePath, "utf8"), /footer, model identifier, and filesystem path/u);
+	assert.match(
+		readFileSync(capturePath, "utf8"),
+		/footer, model identifier, filesystem path, and assistant reasoning/u,
+	);
 }
 const workflow = readFileSync(join(root, "docs/development-workflow.md"), "utf8");
 for (const marker of [

@@ -11,7 +11,7 @@ import {
 } from "../extensions/pi-timelens/reporting.ts";
 import { formatSettings, normalizeSettings, updateSetting } from "../extensions/pi-timelens/settings.ts";
 
-const base = { schemaVersion: 2 as const, cycleId: "cycle-1", sequence: 1 };
+const base = { schemaVersion: 3 as const, cycleId: "cycle-1", sequence: 1 };
 const tool = (
 	id: string,
 	name: string,
@@ -30,43 +30,47 @@ const tool = (
 	status,
 });
 
+const assistant: Extract<TimingRecord, { kind: "assistant" }> = {
+	...base,
+	kind: "assistant",
+	turnIndex: 0,
+	startedAt: 1_000,
+	endedAt: 2_000,
+	durationMs: 1_000,
+	ttftMs: 200,
+	streamingMs: 800,
+	outputTokensPerSecond: 50,
+	usage: {
+		input: 100,
+		output: 40,
+		cacheRead: 500,
+		cacheWrite: 10,
+		totalTokens: 650,
+		cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 },
+	},
+	billingMode: "metered",
+};
+
 const records: TimingRecord[] = [
 	{
 		...base,
-		kind: "assistant",
+		sequence: 4,
+		kind: "step",
 		turnIndex: 0,
 		startedAt: 1_000,
-		endedAt: 2_000,
-		durationMs: 1_000,
-		ttftMs: 200,
-		streamingMs: 800,
-		outputTokensPerSecond: 50,
-		usage: {
-			input: 100,
-			output: 40,
-			cacheRead: 500,
-			cacheWrite: 10,
-			totalTokens: 650,
-			cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 },
-		},
-		billingMode: "metered",
-	},
-	{
-		...base,
-		sequence: 2,
-		kind: "batch",
-		turnIndex: 0,
-		batchId: "batch-1",
-		startedAt: 2_100,
 		endedAt: 2_500,
-		wallMs: 400,
-		workMs: 550,
-		status: "error",
+		durationMs: 1_500,
+		assistant,
+		toolWallMs: 400,
+		toolWorkMs: 550,
 		tools: [tool("a", "read", 150), tool("b", "bash", 400, "error")],
+		usage: assistant.usage,
+		billingMode: "metered",
+		status: "error",
 	},
 	{
 		...base,
-		sequence: 3,
+		sequence: 5,
 		kind: "cycle",
 		startedAt: 900,
 		endedAt: 3_000,
@@ -81,22 +85,8 @@ const records: TimingRecord[] = [
 		submissions: 1,
 		userWaitMs: 100,
 		retryWaitMs: 50,
-		assistantUsage: {
-			input: 100,
-			output: 40,
-			cacheRead: 500,
-			cacheWrite: 10,
-			totalTokens: 650,
-			cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 },
-		},
-		totalUsage: {
-			input: 100,
-			output: 40,
-			cacheRead: 500,
-			cacheWrite: 10,
-			totalTokens: 650,
-			cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 },
-		},
+		assistantUsage: assistant.usage,
+		totalUsage: assistant.usage,
 		billingMode: "metered",
 		status: "failed",
 	},
@@ -108,10 +98,10 @@ test("extracts only display-only message timing entries", () => {
 		{ type: "custom", customType: "other", data: { kind: "tool" } },
 		...records.map((record) => ({ type: "custom", customType: "message-timing", data: record })),
 	]);
-	assert.equal(extracted.length, 3);
+	assert.equal(extracted.length, 2);
 });
 
-test("summarizes cycles without double-counting assistant or nested batch usage", () => {
+test("summarizes cycles without double-counting nested Step usage", () => {
 	const summary = summarizeTiming(records);
 	assert.equal(summary.cycles, 1);
 	assert.equal(summary.assistantSteps, 1);
@@ -130,9 +120,10 @@ test("summarizes cycles without double-counting assistant or nested batch usage"
 	assert.match(rendered, /Cache read/);
 });
 
-test("formats a branch-local timeline with one batch header", () => {
+test("formats a branch-local timeline with one Step and its members", () => {
 	const timeline = formatTimeline(records).join("\n");
-	assert.equal(timeline.match(/batch {2}2 tools/g)?.length, 1);
+	assert.equal(timeline.match(/step {3}/g)?.length, 1);
+	assert.match(timeline, /└ model/);
 	assert.match(timeline, /└ read/);
 	assert.match(timeline, /cycle/);
 });
@@ -141,16 +132,16 @@ test("exports only bounded timing metadata as JSON", () => {
 	const json = exportTimingJson(records);
 	const parsed = JSON.parse(json);
 	assert.equal(parsed.scope, "current-branch");
-	assert.equal(parsed.records.length, 3);
+	assert.equal(parsed.records.length, 2);
 	assert.doesNotMatch(json, /prompt|arguments|content|toolOutput/i);
 });
 
-test("exports batches and members as valid CSV rows", () => {
+test("exports Steps and nested members as valid CSV rows", () => {
 	const csv = exportTimingCsv(records);
 	const lines = csv.trim().split("\n");
-	assert.equal(lines.length, 6); // header + assistant + batch + 2 members + cycle
-	assert.match(lines[0]!, /toolCallId/);
-	assert.match(csv, /batch-1/);
+	assert.equal(lines.length, 6); // header + Step + nested assistant + 2 tools + cycle
+	assert.match(lines[0]!, /stepId,parentStepId/);
+	assert.match(csv, /cycle-1:turn-0/);
 	assert.doesNotMatch(csv, /secret/);
 });
 
@@ -167,15 +158,15 @@ test("normalizes and updates persisted settings", () => {
 });
 
 test("display settings hide cost and milliseconds without hiding usage", () => {
-	const assistant = records[0]!;
-	if (assistant.kind !== "assistant") throw new Error("fixture");
-	const rendered = formatTimingRecord(assistant, false, 160, { showCost: false, showMilliseconds: false }).join("\n");
+	const step = records[0]!;
+	if (step.kind !== "step") throw new Error("fixture");
+	const rendered = formatTimingRecord(step, false, 160, { showCost: false, showMilliseconds: false }).join("\n");
 	assert.doesNotMatch(rendered, /\.000/);
 	assert.doesNotMatch(rendered, /\$/);
-	assert.match(rendered, /Σ650 ↑100 ↓40 R500 W10/);
+	assert.match(rendered, /650 tokens · 500 cached · 10 cache write/);
 });
 
-test("safe export strips hostile extra fields from V2 and nested batch records", () => {
+test("safe export strips hostile extra fields from V3 and nested Step records", () => {
 	const secret = "DO-NOT-EXPORT-THIS";
 	const hostileTool = {
 		...tool("hostile", "subagent", 20),
@@ -183,25 +174,26 @@ test("safe export strips hostile extra fields from V2 and nested batch records",
 		arguments: { secret },
 		usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, content: secret },
 	} as unknown as ToolTimingRecord;
-	const hostileBatch = {
+	const hostileStep = {
 		...base,
-		kind: "batch" as const,
+		kind: "step" as const,
 		turnIndex: 0,
-		batchId: "hostile-batch",
 		startedAt: 1,
 		endedAt: 21,
-		wallMs: 20,
-		workMs: 20,
+		durationMs: 20,
+		toolWallMs: 20,
+		toolWorkMs: 20,
 		status: "success" as const,
+		billingMode: "unknown" as const,
 		tools: [hostileTool],
 		toolOutput: secret,
 	} as unknown as TimingRecord;
-	const exported = exportTimingJson([hostileBatch]);
+	const exported = exportTimingJson([hostileStep]);
 	assert.doesNotMatch(exported, new RegExp(secret));
 	assert.doesNotMatch(exported, /"prompt"|"arguments"|"toolOutput"|"content"/);
 });
 
-test("mixed V1 and V2 summaries retain legacy model and tool time", () => {
+test("mixed V1 and V3 summaries retain legacy model and tool time", () => {
 	const baseline = summarizeTiming(records);
 	const legacy = timingRecordsFromEntries([
 		{
@@ -233,9 +225,105 @@ test("mixed V1 and V2 summaries retain legacy model and tool time", () => {
 	assert.equal(summary.toolWallMs, baseline.toolWallMs + 700);
 });
 
+test("retains V1 child usage when its cycle has no aggregate", () => {
+	const legacy = timingRecordsFromEntries([
+		{
+			type: "custom",
+			customType: "message-timing",
+			data: {
+				kind: "assistant",
+				startedAt: 10,
+				endedAt: 20,
+				durationMs: 10,
+				usage: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 12 },
+			},
+		},
+		{
+			type: "custom",
+			customType: "message-timing",
+			data: {
+				kind: "tool",
+				toolCallId: "legacy-usage-tool",
+				toolName: "read",
+				startedAt: 20,
+				endedAt: 30,
+				durationMs: 10,
+				usage: { input: 5, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 6 },
+			},
+		},
+		{
+			type: "custom",
+			customType: "message-timing",
+			data: { kind: "cycle", startedAt: 10, endedAt: 30, durationMs: 20 },
+		},
+		{
+			type: "custom",
+			customType: "message-timing",
+			data: {
+				kind: "assistant",
+				startedAt: 40,
+				endedAt: 50,
+				durationMs: 10,
+				usage: { input: 25, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 30 },
+			},
+		},
+		{
+			type: "custom",
+			customType: "message-timing",
+			data: {
+				kind: "cycle",
+				startedAt: 40,
+				endedAt: 50,
+				durationMs: 10,
+				totalUsage: { input: 25, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 30 },
+			},
+		},
+	]);
+	const summary = summarizeTiming(legacy);
+
+	assert.equal(summary.usage?.totalTokens, 48);
+	assert.equal(legacy[0]?.cycleId, "legacy-v1-0");
+	assert.equal(legacy[2]?.cycleId, "legacy-v1-0");
+	assert.equal(legacy[3]?.cycleId, "legacy-v1-1");
+	assert.equal(legacy[4]?.cycleId, "legacy-v1-1");
+});
+
+test("omits subscription costs from direct and nested exports", () => {
+	const subscriptionUsage = {
+		input: 100,
+		output: 20,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 120,
+		cost: { input: 0.4, output: 0.59, cacheRead: 0, cacheWrite: 0, total: 0.99 },
+	};
+	const subscriptionAssistant = {
+		...assistant,
+		billingMode: "subscription" as const,
+		usage: subscriptionUsage,
+	};
+	const subscriptionTool = {
+		...tool("subscription-export", "subagent", 200),
+		billingMode: "subscription" as const,
+		usage: subscriptionUsage,
+	};
+	const subscriptionStep: Extract<TimingRecord, { kind: "step" }> = {
+		...(records[0] as Extract<TimingRecord, { kind: "step" }>),
+		assistant: subscriptionAssistant,
+		tools: [subscriptionTool],
+		usage: subscriptionUsage,
+		billingMode: "subscription",
+	};
+	const exported = exportTimingJson([subscriptionAssistant, subscriptionTool, subscriptionStep]);
+	const csv = exportTimingCsv([subscriptionAssistant, subscriptionTool, subscriptionStep]);
+
+	assert.doesNotMatch(exported, /"cost"/);
+	assert.doesNotMatch(csv, /0\.99/);
+});
+
 test("mixed summaries report only the metered subtotal", () => {
 	const meteredAssistant = {
-		...(records[0] as Extract<TimingRecord, { kind: "assistant" }>),
+		...assistant,
 		cycleId: "metered-cycle",
 		usage: {
 			input: 300,

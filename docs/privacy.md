@@ -14,7 +14,7 @@ It also emits the process-local `message-timing:state` event for optional footer
 
 ## What records can contain
 
-- record, cycle, turn, batch, and tool-call identifiers;
+- record, cycle, turn, Step, and tool-call identifiers;
 - wall-clock timestamps and monotonic durations;
 - status and failure/abort counts;
 - tool names, but not tool arguments or output;
@@ -31,7 +31,7 @@ It also emits the process-local `message-timing:state` event for optional footer
 - file contents;
 - arbitrary unknown fields attached to timing records.
 
-Export serializers rebuild every record from explicit allowlists, including nested batch members and usage objects.
+Export serializers rebuild every record from explicit allowlists, including nested Step model/tool contributions and usage objects. Subscription records keep provider-reported token counts but omit cost fields from JSON and CSV; mixed aggregates expose only their metered subtotal.
 
 ## Model-context boundary
 

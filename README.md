@@ -148,7 +148,7 @@ npm run check
 npm run smoke:packed
 ```
 
-The packed-package smoke test creates a temporary offline Pi home, installs the exact npm artifact with `pi install`, verifies `/timing`, and removes the temporary files. It does not read credentials, sessions, or provider configuration.
+The packed-package smoke test creates a temporary offline Pi home, installs the exact npm artifact with `pi install`, verifies that `/timing` is registered, and removes the temporary files. It does not read credentials, sessions, or provider configuration. See [Development, TUI validation, and gallery workflow](docs/development-workflow.md) for the complete real-Pi and media evidence process.
 
 Additional commands:
 

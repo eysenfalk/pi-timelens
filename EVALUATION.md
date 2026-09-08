@@ -39,11 +39,11 @@ The package begins from the deployed Message Timing V2 implementation and preser
 - command-level enforcement of the cost-display setting in summaries;
 - faithful, visibly labeled 120- and 40-column transcript redraws with sanitized capture fixtures.
 
-The active harness extension has not been replaced or modified by this candidate.
+The active harness remained unchanged throughout candidate comparison. After PR #2 merged as `31730d43f82ad3311f76b7d8ed661ff24d029df5`, that exact Git source was deliberately installed locally, the previous timing owner was reversibly retired, and fresh full-profile Pi sessions verified one TimeLens resource plus working footer integration at 120 and 40 columns.
 
 ## Rollback
 
-The GitHub repository can be archived if the source launch is withdrawn; the active harness remains unchanged. After npm publication, versions are immutable: deprecate a defective version, publish a patch, and let users pin or reinstall the last known-good version. Never rewrite release tags or reuse versions.
+The local deployment checkpoint is `pre-pi-timelens-local-git-20260908`; rollback restores the prior package/settings state and re-enables the retired timing owner. The GitHub repository can be archived if the source launch is withdrawn. After npm publication, versions are immutable: deprecate a defective version, publish a patch, and let users pin or reinstall the last known-good version. Never rewrite release tags or reuse versions.
 
 ## Remaining external gates
 

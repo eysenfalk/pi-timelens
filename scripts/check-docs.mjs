@@ -18,7 +18,18 @@ assert.deepEqual(broken, [], `broken local Markdown links:\n${broken.join("\n")}
 const readme = readFileSync(join(root, "README.md"), "utf8");
 assert.match(readme, /pi install npm:pi-timelens/u);
 assert.match(readme, /Every turn\. Every tool\. Every token\./u);
-assert.ok(existsSync(join(root, "media/gallery.webp")), "README gallery image is missing");
+for (const asset of ["demo.svg", "demo-mobile.svg", "gallery.webp", "gallery-mobile.webp"]) {
+	assert.ok(existsSync(join(root, "media", asset)), `README gallery asset is missing: ${asset}`);
+}
+for (const source of ["demo.svg", "demo-mobile.svg"]) {
+	const svg = readFileSync(join(root, "media", source), "utf8");
+	assert.match(svg, /real Pi 0\.85\.1 TUI session/u);
+	assert.match(svg, /Pi TimeLens · faithful(?: .*?)? transcript · (?:120|40) columns/u);
+	assert.doesNotMatch(svg, /tok —|✓ read/u, `${source} must not restore illustrative tool output`);
+}
+for (const capture of ["real-pi-120.txt", "real-pi-40.txt"]) {
+	assert.ok(existsSync(join(root, "tests", "fixtures", capture)), `capture evidence is missing: ${capture}`);
+}
 
 console.log(`Documentation contract OK: ${markdown.length} Markdown files, no broken local links`);
 

@@ -10,7 +10,7 @@ Shows aggregate cycles, assistant steps, tools, failures, aborts, model and tool
 
 ### `/timing timeline`
 
-Shows source-ordered assistant, single-tool, batch, and cycle records. A batch appears once and contains one attributed member row per tool.
+Shows source-ordered assistant, single-tool, batch, and cycle records. A batch appears once and contains one attributed member row per tool. Compact mode shows one aggregate for reported model-backed usage; `Ctrl+O` keeps the reporting tool totals attributable.
 
 ### `/timing legend`
 

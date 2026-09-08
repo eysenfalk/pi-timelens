@@ -60,7 +60,11 @@ export function registerTimingCommands(pi: CommandPi, dependencies: TimingComman
 			const action = parts[0]?.toLowerCase() ?? "help";
 			const records = () => timingRecordsFromEntries(ctx.sessionManager.getBranch());
 			if (action === "summary") {
-				await dependencies.showPanel(ctx, "Timing summary", formatSummary(summarizeTiming(records())));
+				await dependencies.showPanel(
+					ctx,
+					"Timing summary",
+					formatSummary(summarizeTiming(records()), { showCost: dependencies.getSettings().showCost }),
+				);
 				return;
 			}
 			if (action === "timeline") {

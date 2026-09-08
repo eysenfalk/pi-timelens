@@ -182,7 +182,44 @@ test("emits one consolidated entry after a parallel batch", async () => {
 		["a", "b"],
 	);
 	assert.equal(h.render(batch).match(/◆ Batch/g)?.length, 1);
-	assert.equal(h.render(batch).match(/tok —/g)?.length, 2);
+	assert.doesNotMatch(h.render(batch), /tok —/);
+});
+
+test("aggregates nested model-backed usage through the runtime adapter", async () => {
+	const h = harness();
+	await h.emit("session_start", { reason: "startup" });
+	await startTurn(h);
+	await h.emit("message_end", { message: { role: "assistant", stopReason: "toolUse", content: [] } });
+	const nestedResult = {
+		details: {
+			results: [
+				{
+					model: "openai/gpt-test",
+					usage: {
+						...usage(300, 40, 500, 10),
+						cost: { input: 0.01, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.02 },
+					},
+				},
+			],
+		},
+	};
+	await h.emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
+	await h.emit("tool_execution_start", { toolCallId: "b", toolName: "subagent" });
+	h.setTime(1_300, 300);
+	await h.emit("tool_execution_end", { toolCallId: "a", toolName: "read", result: {}, isError: false });
+	h.setTime(1_400, 400);
+	await h.emit("tool_execution_end", { toolCallId: "b", toolName: "subagent", result: nestedResult, isError: false });
+	await h.emit("message_end", { message: { role: "toolResult", toolCallId: "a", isError: false } });
+	await h.emit("message_end", {
+		message: { role: "toolResult", toolCallId: "b", isError: false, ...nestedResult },
+	});
+	await h.emit("turn_end", { turnIndex: 0 });
+	h.flushDeferred();
+	const batch = h.appended.at(-1)!;
+	assert.equal(batch.kind, "batch");
+	assert.match(h.render(batch).split("\n")[0]!, /Σ850 ↑300 ↓40 R500 W10 · \$0\.020$/);
+	assert.doesNotMatch(h.render(batch).split("\n").slice(1).join("\n"), /Σ|\$|tok —/);
+	assert.match(h.render(batch, true), /b .* Σ850 ↑300 ↓40 R500 W10 · \$0\.020/);
 });
 
 test("emits one compact record for a single tool", async () => {
@@ -323,7 +360,7 @@ test("renders legacy V1 entries with the V2 renderer", async () => {
 		status: "success",
 	});
 	assert.match(text, /read/);
-	assert.match(text, /tok —/);
+	assert.doesNotMatch(text, /tok —/);
 });
 
 test("applies mutable display and live settings without re-registering", async () => {

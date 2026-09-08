@@ -233,6 +233,43 @@ test("mixed V1 and V2 summaries retain legacy model and tool time", () => {
 	assert.equal(summary.toolWallMs, baseline.toolWallMs + 700);
 });
 
+test("mixed summaries report only the metered subtotal", () => {
+	const meteredAssistant = {
+		...(records[0] as Extract<TimingRecord, { kind: "assistant" }>),
+		cycleId: "metered-cycle",
+		usage: {
+			input: 300,
+			output: 40,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 340,
+			cost: { input: 0.01, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.02 },
+		},
+	};
+	const subscriptionTool = {
+		...tool("subscription", "subagent", 200),
+		cycleId: "subscription-cycle",
+		billingMode: "subscription" as const,
+		usage: {
+			input: 100,
+			output: 20,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 120,
+			cost: { input: 0.4, output: 0.59, cacheRead: 0, cacheWrite: 0, total: 0.99 },
+		},
+	};
+	const summary = summarizeTiming([meteredAssistant, subscriptionTool]);
+
+	assert.equal(summary.billing, "mixed");
+	assert.equal(summary.usage?.totalTokens, 460);
+	assert.equal(summary.cost, 0.02);
+	const output = formatSummary(summary).join("\n");
+	assert.match(output, /Billing\s+mixed/);
+	assert.match(output, /Metered cost\s+\$0\.0200/);
+	assert.doesNotMatch(output, /0\.9900|1\.0100/);
+});
+
 test("subscription summaries show billing mode instead of calculated cost", () => {
 	const subscriptionCycle = {
 		...(records.find((record) => record.kind === "cycle") as Extract<TimingRecord, { kind: "cycle" }>),

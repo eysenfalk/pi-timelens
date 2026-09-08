@@ -259,7 +259,7 @@ export function registerMessageTiming(
 			return;
 		}
 		if (event.message.role === "toolResult") {
-			tracker.consumeToolResult(event.message.toolCallId, event.message.usage, event.message.isError);
+			tracker.consumeToolResult(event.message.toolCallId, event.message, event.message.isError);
 		}
 	});
 

@@ -84,8 +84,8 @@ try {
 				const message = JSON.parse(line);
 				if (message.id === "state") stateLoaded = message.success === true;
 				if (message.id === "commands") {
-					const names = new Set(message.data?.commands?.map((command) => command.name));
-					commandsLoaded = message.success === true && names.has("timing");
+					const timingCommands = (message.data?.commands ?? []).filter((command) => command.name === "timing");
+					commandsLoaded = message.success === true && timingCommands.length === 1;
 					child.kill("SIGTERM");
 				}
 			} catch {}
@@ -103,7 +103,7 @@ try {
 	assert.equal(timedOut, false, "fresh Pi RPC smoke test timed out");
 	assert.equal(loaderError, false, stderr);
 	assert.equal(stateLoaded, true, "fresh Pi did not answer get_state");
-	assert.equal(commandsLoaded, true, "packed extension did not register /timing");
+	assert.equal(commandsLoaded, true, "packed extension did not register /timing exactly once");
 
 	console.log(
 		JSON.stringify(

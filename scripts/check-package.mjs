@@ -65,6 +65,7 @@ const required = [
 	"extensions/pi-timelens/settings.ts",
 	"extensions/pi-timelens/commands.ts",
 	"docs/architecture.md",
+	"docs/development-workflow.md",
 	"docs/commands.md",
 	"docs/integrations.md",
 	"docs/metrics.md",

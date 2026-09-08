@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="440" height="694" viewBox="0 0 440 694" role="img" aria-labelledby="title desc" xml:space="preserve">
   <title id="title">Pi TimeLens in a real narrow Pi terminal</title>
   <desc id="desc">A selected successful-turn transcript crop from Pi 0.85.1 at 40 columns. Responsive TimeLens output wraps complete timing and token segments without empty tool placeholders.</desc>
-  <metadata>Selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-07. Successful-turn transcript text, wrapping, ordering, and theme colors are preserved; startup, transient working/status UI, update notice, footer, and filesystem path are omitted.</metadata>
+  <metadata>Selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-07. Successful-turn transcript text, wrapping, ordering, and theme colors are preserved; startup, transient working/status UI, update notice, footer, model identifier, and filesystem path are omitted.</metadata>
   <rect width="440" height="694" fill="#09090b"/>
 
   <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="14" fill="#d4d4d4">

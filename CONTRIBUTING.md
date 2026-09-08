@@ -21,7 +21,7 @@ npm run check
 npm run smoke:packed
 ```
 
-Node.js 22 or newer is required. The development dependency pins the Pi version used for package smoke tests.
+Node.js 22 or newer is required. The development dependency pins the Pi version used for package smoke tests. Before changing user-visible terminal output or gallery media, follow [Development, TUI validation, and gallery workflow](docs/development-workflow.md).
 
 ## Engineering standards
 

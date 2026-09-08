@@ -1,7 +1,7 @@
 # Pi TimeLens capture evidence
 # Pi 0.85.1 · 120 columns · successful turn · 2026-09-07
 # Sanitized omissions: startup UI, transient working/status UI, update notice,
-# footer, and filesystem path. Transcript text and line wrapping are unchanged.
+# footer, model identifier, and filesystem path. Transcript text and line wrapping are unchanged.
 
 Use the read tool to read auth.ts and config.ts in one parallel tool batch, then reply with exactly: Verified both
 files.

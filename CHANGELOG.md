@@ -15,6 +15,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Display-only transcript entries and content-free live/session telemetry.
 - Responsive semantic wrapping for narrow terminals.
 - Schema V2 persistence with V1 replay compatibility.
+- A maintainer workflow for exact-package smoke tests, real 120/40-column Pi validation, sanitized capture evidence, and faithful SVG/WebP gallery reproduction.
 
 ### Changed
 

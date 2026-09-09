@@ -14,7 +14,7 @@ Shows source-ordered Step and cycle records. Each Step contains its model turn a
 
 ### `/timing legend`
 
-Explains Step, Total, first-output latency, tool wall time, cached tokens, billing, and expanded diagnostics.
+Explains Step, Total, first-output latency, tool wall time, cached tokens, provider-reported cost, and expanded diagnostics. It also notes that compact entries omit subscription labels while expanded entries retain billing scope.
 
 ## Display settings
 

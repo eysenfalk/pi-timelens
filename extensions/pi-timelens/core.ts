@@ -898,14 +898,8 @@ export function formatUsageCompact(usage?: UsageSnapshot): string {
 }
 
 function formatBilling(mode: BillingMode, usage?: UsageSnapshot, showCost = true): string | undefined {
-	if (mode === "subscription") return "sub";
-	if (mode === "mixed") {
-		if (!showCost || !usage?.cost) return "mixed";
-		const cost = `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
-		return `${cost} + sub`;
-	}
-	if (showCost && usage?.cost) return `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
-	return undefined;
+	if (!showCost || mode === "subscription" || !usage?.cost) return undefined;
+	return `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
 }
 
 function usageDetailField(usage: UsageSnapshot, field: keyof UsageFieldPresence): string {
@@ -917,14 +911,8 @@ function formatReadableBilling(
 	usage: UsageSnapshot | undefined,
 	showCost = true,
 ): string | undefined {
-	if (mode === "subscription") return "subscription";
-	const formattedCost = usage?.cost ? `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}` : undefined;
-	if (mode === "mixed") {
-		if (showCost && formattedCost) return `${formattedCost} + subscription`;
-		return "mixed billing";
-	}
-	if (mode === "metered" && showCost) return formattedCost;
-	return undefined;
+	if (!showCost || mode === "subscription" || !usage?.cost) return undefined;
+	return `$${usage.cost.total.toFixed(usage.cost.total < 0.01 ? 4 : 3)}`;
 }
 
 function readableUsageSegments(usage: UsageSnapshot | undefined, billing: BillingMode, showCost = true): string[] {
@@ -953,7 +941,7 @@ function compactReadable(
 	return wrapSegments([...prefixSegments, ...readableUsageSegments(usage, billing, showCost)].join(" · "), width);
 }
 
-function usageDetails(usage: UsageSnapshot, showCost = true): string[] {
+function usageDetails(usage: UsageSnapshot, showCost = true, costLabel = "Cost"): string[] {
 	const lines = [
 		`Total:       ${usageDetailField(usage, "totalTokens")}`,
 		`Input:       ${usageDetailField(usage, "input")}`,
@@ -961,8 +949,19 @@ function usageDetails(usage: UsageSnapshot, showCost = true): string[] {
 		`Cache read:  ${usageDetailField(usage, "cacheRead")}`,
 		`Cache write: ${usageDetailField(usage, "cacheWrite")}`,
 	];
-	if (showCost && usage.cost) lines.push(`Cost:        $${usage.cost.total.toFixed(4)}`);
+	if (showCost && usage.cost) {
+		const label = `${costLabel}:`;
+		lines.push(`${label}${label.length >= 13 ? " " : " ".repeat(13 - label.length)}$${usage.cost.total.toFixed(4)}`);
+	}
 	return lines;
+}
+
+function detailedUsage(usage: UsageSnapshot, billing: BillingMode, showCost: boolean): string[] {
+	return usageDetails(usage, showCost && billing !== "subscription", billing === "mixed" ? "Metered cost" : "Cost");
+}
+
+function billingDetails(mode: BillingMode): string[] {
+	return mode === "unknown" ? [] : [`Billing:     ${mode}`];
 }
 
 function wrapSegments(value: string, width: number): string[] {
@@ -1072,7 +1071,8 @@ export function formatTimingRecord(
 			`End:         ${timestamp(record.endedAt)}`,
 			`Duration:    ${formatDuration(record.durationMs)}`,
 			`Streaming:   ${record.streamingMs === undefined ? "—" : formatDuration(record.streamingMs)}`,
-			...(record.usage ? usageDetails(record.usage, showCost && record.billingMode === "metered") : ["Tokens:      —"]),
+			...(record.usage ? detailedUsage(record.usage, record.billingMode, showCost) : ["Tokens:      —"]),
+			...billingDetails(record.billingMode),
 		];
 		if (record.provider || record.model)
 			details.push(`Model:       ${[record.provider, record.model].filter(Boolean).join("/")}`);
@@ -1112,13 +1112,12 @@ export function formatTimingRecord(
 			if (tool.usage && record.tools.length > 1) {
 				details.push(
 					`Usage (${tool.toolName}):`,
-					...usageDetails(tool.usage, showCost && tool.billingMode === "metered").map((line) => `  ${line}`),
+					...detailedUsage(tool.usage, tool.billingMode, showCost).map((line) => `  ${line}`),
 				);
 			}
 		}
-		if (record.usage) {
-			details.push("Step usage:", ...usageDetails(record.usage, showCost && record.billingMode !== "subscription"));
-		}
+		if (record.usage) details.push("Step usage:", ...detailedUsage(record.usage, record.billingMode, showCost));
+		details.push(...billingDetails(record.billingMode));
 		if (record.assistant?.provider || record.assistant?.model) {
 			details.push(`Provider:    ${[record.assistant.provider, record.assistant.model].filter(Boolean).join("/")}`);
 		}
@@ -1137,10 +1136,9 @@ export function formatTimingRecord(
 			...compact,
 			`  Tool call: ${record.toolCallId}`.slice(0, width),
 			...(record.usage
-				? usageDetails(record.usage, showCost && record.billingMode === "metered").map((line) =>
-						`  ${line}`.slice(0, width),
-					)
+				? detailedUsage(record.usage, record.billingMode, showCost).map((line) => `  ${line}`.slice(0, width))
 				: []),
+			...billingDetails(record.billingMode).map((line) => `  ${line}`.slice(0, width)),
 		];
 	}
 
@@ -1151,6 +1149,17 @@ export function formatTimingRecord(
 		const lines = aggregate.usage
 			? compactWithUsage(prefix, aggregate.usage, aggregate.billingMode, width, showCost)
 			: wrapSegments(prefix, width);
+		if (expanded) {
+			if (aggregate.usage) {
+				lines.push(
+					...[
+						"Batch usage:",
+						...detailedUsage(aggregate.usage, aggregate.billingMode, showCost),
+						...billingDetails(aggregate.billingMode),
+					].flatMap((line) => wrapWords(`  ${line}`, width)),
+				);
+			} else lines.push(...billingDetails(aggregate.billingMode).map((line) => `  ${line}`.slice(0, width)));
+		}
 		for (const [index, tool] of record.tools.entries()) {
 			const outcome = tool.status === "success" ? "" : ` · ${tool.status === "error" ? "failed" : "aborted"}`;
 			lines.push(
@@ -1188,7 +1197,8 @@ export function formatTimingRecord(
 		`Tool work:  ${formatDuration(record.toolWorkMs)}`,
 		`Failures:   ${record.toolFailures}`,
 		`Aborted:    ${record.toolAborts}`,
-		...(record.totalUsage ? usageDetails(record.totalUsage, showCost && record.billingMode !== "subscription") : []),
+		...(record.totalUsage ? detailedUsage(record.totalUsage, record.billingMode, showCost) : []),
+		...billingDetails(record.billingMode),
 	];
 	if (record.userWaitMs > 0) details.push(`User wait:  ${formatDuration(record.userWaitMs)}`);
 	if (record.retryWaitMs > 0) details.push(`Retry wait: ${formatDuration(record.retryWaitMs)}`);

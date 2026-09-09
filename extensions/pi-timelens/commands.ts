@@ -35,10 +35,11 @@ const LEGEND = [
 	"first  time to first provider output",
 	"tools  elapsed tool wall time",
 	"cached  provider-reported cache-read tokens",
-	"subscription  usage without a fabricated metered price",
+	"cost  provider-reported metered amount when available",
 	"",
-	"Expand a timing entry for exact timestamps, model streaming speed,",
-	"individual tool durations, cumulative work, and the full token breakdown.",
+	"Compact entries omit redundant subscription labels. Expand a timing entry",
+	"for billing mode, exact timestamps, model streaming speed, individual tool",
+	"durations, cumulative work, and the full token breakdown.",
 ];
 
 const HELP = [

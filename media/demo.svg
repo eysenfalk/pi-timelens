@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="410" viewBox="0 0 960 410" role="img" aria-labelledby="title desc" xml:space="preserve">
   <title id="title">Pi TimeLens Step summaries in a real Pi terminal session</title>
-  <desc id="desc">A faithful transcript redraw from Pi 0.85.1 at 120 columns. Two read tools run in parallel. TimeLens summarizes each model-and-tool Step, then shows one request Total with elapsed time, model time, tool time, tokens, cache, and subscription billing.</desc>
-  <metadata>Faithful redraw of tests/fixtures/real-pi-120.txt, selected from a real Pi 0.85.1 TUI session at 120 columns on 2026-09-08. Raw capture SHA-256: 2ebe64754733226cdd5c007fc1c4d9cecc8a0b4892c5b4c209d6109d22b80ce2. Transcript text, wrapping, ordering, measured values, and theme roles are preserved; startup, transient working/status UI, update notice, footer, model identifier, filesystem path, and assistant reasoning are omitted.</metadata>
+  <desc id="desc">A faithful transcript redraw from Pi 0.85.1 at 120 columns. Two read tools run in parallel. TimeLens summarizes each model-and-tool Step, then shows one request Total with elapsed time, model time, tool time, and tokens.</desc>
+  <metadata>Faithful redraw of tests/fixtures/real-pi-120.txt, selected from a real Pi 0.85.1 TUI session at 120 columns on 2026-09-09. Raw capture SHA-256: 154d43a182362bb889c831942f1f25988c0939e9c41acd4dab8be9ea9d9de97b. Transcript text, wrapping, ordering, measured values, and theme roles are preserved; startup, transient working/status UI, update notice, footer, model identifier, filesystem path, and assistant reasoning are omitted.</metadata>
   <rect width="960" height="410" fill="#09090b"/>
 
   <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="12.5" fill="#d4d4d4">
@@ -16,13 +16,13 @@
       <rect x="20" y="156" width="920" height="46" fill="#283228"/>
       <text x="30" y="183"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> config.ts</tspan></text>
 
-      <text x="20" y="230" fill="#b5bd68">◆ Step · 2.62s · first 2.22s · 2 tools 6ms · 1.1k tokens · subscription</text>
+      <text x="20" y="230" fill="#b5bd68">◆ Step · 9.51s · first 9.38s · 2 tools 5ms · 1.1k tokens</text>
 
       <text x="20" y="272">Verified both files.</text>
 
-      <text x="20" y="310" fill="#b5bd68">◆ Step · 4.79s · first 3.81s · 1.1k tokens · 1k cached · subscription</text>
+      <text x="20" y="310" fill="#b5bd68">◆ Step · 1.79s · first 1.44s · 1.1k tokens</text>
 
-      <text x="20" y="354" fill="#b5bd68">◆ Total · 7.42s · model 7.40s · tools 6ms · 2.3k tokens · 1k cached · subscription</text>
+      <text x="20" y="354" fill="#b5bd68">◆ Total · 11.3s · model 11.3s · tools 5ms · 2.2k tokens</text>
     </g>
   </g>
 </svg>

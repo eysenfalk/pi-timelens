@@ -25,7 +25,7 @@ interface MessageTimingState {
   lastCycle?: {
     durationMs: number;
     usage?: ProviderUsage;
-    billingMode: "metered" | "subscription" | "unknown";
+    billingMode: "metered" | "subscription" | "mixed" | "unknown";
     status: "success" | "failed" | "aborted";
   };
   session: {
@@ -34,13 +34,14 @@ interface MessageTimingState {
     tools: number;
     usage?: ProviderUsage;
     cost?: number;
+    billingMode?: "metered" | "subscription" | "mixed" | "unknown";
     failures: number;
     aborted: number;
   };
 }
 ```
 
-Consumers must tolerate unknown fields and missing optional fields. Treat the schema version as a compatibility boundary. Do not infer absent token categories as zero, and do not persist the `text` presentation field as a data contract.
+Consumers must tolerate unknown fields and missing optional fields. Treat the schema version as a compatibility boundary. `session.billingMode` is an additive schema-V1 field and remains optional for compatibility with older producers; when present, it identifies whether `session.cost` is a metered amount or a mixed session's metered subtotal. Subscription sessions omit cost. Do not infer absent token categories as zero, and do not persist the `text` presentation field as a data contract.
 
 ## Responsibility split
 

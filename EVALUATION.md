@@ -1,8 +1,42 @@
 # Release evaluation — 1.0.0-rc.0
 
-Evaluation date: 2026-09-08. Status: isolated Step/Total UX candidate; npm publication was not authorized and has not been performed.
+Evaluation date: 2026-09-09. Status: isolated compact billing-label candidate; npm publication was not authorized and has not been performed.
 
-## Step/Total UX candidate
+## Compact billing-label candidate
+
+GitHub issue: [#6 — Remove redundant subscription labels from compact timing UI](https://github.com/eysenfalk/pi-timelens/issues/6)
+
+### Decision target
+
+Remove `sub` and `subscription` from compact Step, Total, legacy replay, and default Powerline-footer output without hiding tokens, inventing cost, or erasing billing scope from expanded diagnostics and reports. Subscription cost metadata remains suppressed; metered records still show only provider-reported cost, and mixed records show only their metered subtotal.
+
+### Deterministic gates
+
+- `npm run check`: 58 tests pass on Node 24; TypeScript, Biome, documentation, workflow, package, and source-parity checks pass.
+- `npm run smoke:packed`: the exact `pi-timelens-1.0.0-rc.0.tgz` installs offline into a fresh Pi home and registers `/timing` exactly once.
+- Package contract: 22 intended files, 165,654 unpacked bytes; tests, raw ANSI logs, temporary fixtures, repository-only evidence, install hooks, and runtime dependencies remain excluded.
+- Focused regression coverage proves compact omission for Step, Total, assistant/tool/batch replay, subscription, mixed, metered, and cost-off paths. Expanded records retain explicit billing mode; mixed details label `Metered cost`; JSON/CSV exports retain billing mode while suppressing subscription-only cost metadata.
+- The isolated footer companion passes 14 tests. Subscription-backed sessions show neither a label nor informational cost; metered and mixed sessions still show the authoritative TimeLens metered subtotal.
+
+### Real Pi evidence
+
+- Installed Pi: `@earendil-works/pi-coding-agent@0.85.1`.
+- Provider-backed checks used `openai-codex/gpt-5.6-luna:low` with two public-safe fixture reads in one parallel batch.
+- Isolated real PTYs at 120 and 40 columns showed compact Step/Total records without `sub`, `subscription`, or a fabricated price; `Ctrl+O` retained `Billing: subscription` and the full usage breakdown.
+- The 120-column combined TimeLens/Powerline run loaded both candidates, produced exactly one Step per turn plus one Total, and rendered a one-line footer with tokens but no subscription label or informational dollar amount. A fresh 40-column combined startup rendered a bounded two-line footer with the same omission.
+- A deterministic real-Pi state emitter then exercised genuine schema-V1 `Billing: mixed` telemetry: the footer rendered only `$0.125` at both 120 and 40 columns, with no subscription label or subscription informational cost.
+- Fresh RPC loaded the two candidates together, returned state successfully, and registered exactly one `/timing`, `/powerline`, and `/powerline-profile` command.
+- Sanitized fixtures and faithful SVG/WebP redraws were refreshed from raw captures `154d43a…97b` (120 columns) and `bdde6b1…d8` (40 columns); raw ANSI remains ignored under `.artifacts/hide-subscription/`.
+
+### Champion comparison and rollback boundary
+
+The unchanged TimeLens champion is merged/deployed commit `c5a4848cff52b498166a7df81431d99982724ec3`: 56 tests pass and its same-host benchmark measured 4.735 µs/cycle. The candidate adds two regression tests and measured 4.858 µs/cycle (+0.123 µs, about 2.6%), which is measurement-scale overhead and remains far below the 500 µs budget. The candidate changes no timing, usage aggregation, lifecycle, or persistence semantics. It adds one optional schema-V1 `session.billingMode` telemetry field for footer consumers.
+
+The active Powerline champion differs by one runtime expression: it renders `sub` for subscription sessions. The candidate renders nothing for subscription billing and preserves `$…` only for non-subscription reported cost. The champion's current test command reaches eight passing tests before an obsolete test-only import of the retired local timing owner fails; the candidate points that integration test at the current TimeLens source and passes all 14 tests. Runtime loading and real TUI behavior pass independently of that baseline test-path drift. The first independent code review blocked a model-only subscription heuristic that hid mixed metered cost; TimeLens now publishes session billing scope, Powerline treats that telemetry as authoritative, and focused plus real 120/40-column mixed-state regressions pass. The independent code follow-up returned `DEPLOY`. Independent visual review returned `DEPLOY`; its low-severity SVG canvas mismatch was also corrected.
+
+No active-harness file is changed by the candidate. Rollback before promotion is deleting the isolated footer candidate and resetting this branch. After an authorized local deployment, restore checkpoint `pre-pi-timelens-no-subscription-labels-20260909` and the prior TimeLens pin `c5a4848cff52b498166a7df81431d99982724ec3`.
+
+## Step/Total UX baseline (merged and deployed)
 
 GitHub issue: [#4 — Replace lifecycle-oriented timing rows with user-centered Step/Total summaries](https://github.com/eysenfalk/pi-timelens/issues/4)
 
@@ -35,7 +69,7 @@ The unchanged installed champion at `31730d43f82ad3311f76b7d8ed661ff24d029df5` s
 
 The first code review blocked on legacy V1 usage suppression and subscription cost leakage in exports. Both root causes received focused regressions; the same reviewer rechecked the fixes and returned `DEPLOY`. Independent visual review found no compact or expanded 120-/40-column UX defect and returned `DEPLOY`; its only stated limit was the absence of a captured error-state screenshot, which remains covered deterministically.
 
-The candidate is isolated on `ux/step-summary`. It has not been installed into the active Pi home, pushed, merged, tagged, or published to npm. Promotion and publication remain separate decisions.
+The Step/Total UX was merged in PR #5 as `c5a4848cff52b498166a7df81431d99982724ec3` and deliberately installed into the active Pi home after review. npm publication remains a separate decision.
 
 ## Original release scope and invariants
 

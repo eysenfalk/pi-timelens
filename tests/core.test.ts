@@ -71,7 +71,7 @@ test("records TTFT, streaming duration, full usage, speed, and metered cost", ()
 	assert.match(formatTimingRecord(record, false).join("\n"), /Σ9\.8k ↑1\.5k ↓200 R8k W100 · \$0\.012/);
 });
 
-test("shows subscription mode without a fabricated zero cost", () => {
+test("keeps subscription mode out of compact output without fabricating cost", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	const record = tracker.finishAssistant(
@@ -84,9 +84,10 @@ test("shows subscription mode without a fabricated zero cost", () => {
 	);
 	const rendered = formatTimingRecord(record, false).join("\n");
 	assert.equal(record.billingMode, "subscription");
-	assert.match(rendered, / · sub$/);
-	assert.doesNotMatch(rendered, /\$0/);
-	assert.doesNotMatch(formatTimingRecord(record, true).join("\n"), /Cost:/);
+	assert.doesNotMatch(rendered, /\b(?:sub|subscription)\b|\$0/);
+	const expanded = formatTimingRecord(record, true).join("\n");
+	assert.match(expanded, /Billing:\s+subscription/);
+	assert.doesNotMatch(expanded, /Cost:/);
 });
 
 test("preserves known subscription billing when the persisted tool message omits provider", () => {
@@ -103,9 +104,12 @@ test("preserves known subscription billing when the persisted tool message omits
 	assert.equal(step.kind, "step");
 	assert.equal(step.billingMode, "subscription");
 	assert.equal(step.usage?.cost, undefined);
-	assert.match(formatTimingRecord(step, false).join("\n"), / · subscription$/);
+	assert.doesNotMatch(formatTimingRecord(step, false).join("\n"), /\b(?:sub|subscription)\b|\$/);
+	assert.match(formatTimingRecord(step, true).join("\n"), /Billing:\s+subscription/);
 	assert.equal(cycle.billingMode, "subscription");
 	assert.equal(cycle.totalUsage?.cost, undefined);
+	assert.doesNotMatch(formatTimingRecord(cycle, false).join("\n"), /\b(?:sub|subscription)\b|\$/);
+	assert.match(formatTimingRecord(cycle, true).join("\n"), /Billing:\s+subscription/);
 });
 
 test("consolidates a model turn and parallel tools into one Step", () => {
@@ -169,7 +173,7 @@ test("aggregates provider-reported model usage once for the whole batch", () => 
 	assert.match(expanded, /Total:\s+1,370/);
 });
 
-test("labels subscription-backed batch usage without fabricating a price", () => {
+test("keeps subscription-backed batch usage compact without a billing label", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	tracker.finishAssistant({ stopReason: "toolUse", content: [] }, at(1_050, 60));
@@ -186,8 +190,8 @@ test("labels subscription-backed batch usage without fabricating a price", () =>
 	}
 	const rendered = formatTimingRecord(tracker.finishTurn(0)!, false).join("\n");
 
-	assert.match(rendered, /240 tokens · subscription/);
-	assert.doesNotMatch(rendered, /\$|Σ|↑|↓|R0|W0/);
+	assert.match(rendered, /240 tokens/);
+	assert.doesNotMatch(rendered, /\b(?:sub|subscription)\b|\$|Σ|↑|↓|R0|W0/);
 });
 
 test("keeps mixed batch and cycle billing truthful", () => {
@@ -207,13 +211,16 @@ test("keeps mixed batch and cycle billing truthful", () => {
 	const compact = formatTimingRecord(step, false, 160).join("\n");
 	const expanded = formatTimingRecord(step, true, 160).join("\n");
 
-	assert.match(compact, /970 tokens · 500 cached · 10 cache write · \$0\.020 \+ subscription$/);
-	assert.match(formatTimingRecord(step, false, 160, { showCost: false }).join("\n"), /mixed billing$/);
+	assert.match(compact, /970 tokens · 500 cached · 10 cache write · \$0\.020$/);
+	assert.doesNotMatch(compact, /\b(?:sub|subscription)\b/);
+	assert.doesNotMatch(formatTimingRecord(step, false, 160, { showCost: false }).join("\n"), /mixed|subscription|\$/);
 	assert.equal(cycle.billingMode, "mixed");
 	assert.equal(cycle.totalUsage?.cost?.total, 0.02);
-	assert.match(formatTimingRecord(cycle, false, 160).join("\n"), /\$0\.020 \+ subscription$/);
+	assert.match(formatTimingRecord(cycle, false, 160).join("\n"), /\$0\.020$/);
 	assert.match(expanded, /research · 200ms · success · metered/);
 	assert.match(expanded, /subagent · 290ms · success · subscription/);
+	assert.match(expanded, /Billing:\s+mixed/);
+	assert.match(expanded, /Metered cost:\s+\$0\.0200/);
 	assert.doesNotMatch(expanded, /\$0\.990/);
 });
 
@@ -260,7 +267,9 @@ test("derives mixed billing from every bounded nested result regardless of order
 		assert.equal(record.billingMode, "mixed");
 		assert.equal(record.usage?.totalTokens, 990);
 		assert.equal(record.usage?.cost?.total, 0.02);
-		assert.match(formatTimingRecord(record, false).join("\n"), /\$0\.020 \+ subscription$/);
+		const compact = formatTimingRecord(record, false).join("\n");
+		assert.match(compact, /\$0\.020$/);
+		assert.doesNotMatch(compact, /\b(?:sub|subscription)\b/);
 		assert.doesNotMatch(formatTimingRecord(record, false).join("\n"), /1\.010/);
 	}
 });
@@ -473,6 +482,29 @@ test("coerces legacy V1 tool records without adding an unavailable-usage placeho
 	assert.equal(legacy?.schemaVersion, 3);
 	assert.equal(legacy?.cycleId, "legacy-v1");
 	assert.doesNotMatch(formatTimingRecord(legacy!, false).join("\n"), /tok —/);
+});
+
+test("hides subscription labels in compact legacy records but keeps expanded billing", () => {
+	const legacy = coerceTimingRecord({
+		schemaVersion: 2,
+		cycleId: "legacy-subscription",
+		sequence: 1,
+		kind: "tool",
+		turnIndex: 0,
+		toolCallId: "legacy-model-tool",
+		toolName: "subagent",
+		startedAt: 100,
+		endedAt: 200,
+		durationMs: 100,
+		usage: usage(100, 20, 0, 0, 0.5),
+		billingMode: "subscription",
+		status: "success",
+	});
+	assert.ok(legacy);
+	assert.doesNotMatch(formatTimingRecord(legacy!, false).join("\n"), /\b(?:sub|subscription)\b|\$/);
+	const expanded = formatTimingRecord(legacy!, true).join("\n");
+	assert.match(expanded, /Billing:\s+subscription/);
+	assert.doesNotMatch(expanded, /Cost:/);
 });
 
 test("recognizes only real assistant output events", () => {

@@ -20,6 +20,7 @@ assert.match(readme, /pi install npm:pi-timelens/u);
 assert.match(readme, /Know where the time and tokens went\./u);
 assert.match(readme, /one concise \*\*Step\*\*/u);
 assert.match(readme, /docs\/development-workflow\.md/u);
+assert.doesNotMatch(readme, / · subscription/u, "README compact examples must omit subscription labels");
 for (const asset of ["demo.svg", "demo-mobile.svg", "gallery.webp", "gallery-mobile.webp"]) {
 	assert.ok(existsSync(join(root, "media", asset)), `README gallery asset is missing: ${asset}`);
 }
@@ -29,6 +30,7 @@ for (const source of ["demo.svg", "demo-mobile.svg"]) {
 	assert.match(svg, /Pi TimeLens · faithful(?: .*?)? transcript · (?:120|40) columns/u);
 	assert.match(svg, /footer, model identifier, filesystem path, and assistant reasoning are omitted/u);
 	assert.match(svg, /◆ Step/u, `${source} must show the compact Step UX`);
+	assert.doesNotMatch(svg, /\b(?:sub|subscription)\b/u, `${source} must omit compact subscription labels`);
 	assert.doesNotMatch(
 		svg,
 		/◆ Batch|└ sent|tok —|✓ read|\d+\. read/u,
@@ -38,10 +40,9 @@ for (const source of ["demo.svg", "demo-mobile.svg"]) {
 for (const capture of ["real-pi-120.txt", "real-pi-40.txt"]) {
 	const capturePath = join(root, "tests", "fixtures", capture);
 	assert.ok(existsSync(capturePath), `capture evidence is missing: ${capture}`);
-	assert.match(
-		readFileSync(capturePath, "utf8"),
-		/footer, model identifier, filesystem path, and assistant reasoning/u,
-	);
+	const captureText = readFileSync(capturePath, "utf8");
+	assert.match(captureText, /footer, model identifier, filesystem path, and assistant reasoning/u);
+	assert.doesNotMatch(captureText, /\b(?:sub|subscription)\b/u, `${capture} must omit compact subscription labels`);
 }
 const workflow = readFileSync(join(root, "docs/development-workflow.md"), "utf8");
 for (const marker of [

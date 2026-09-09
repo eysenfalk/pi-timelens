@@ -37,7 +37,7 @@ sequenceDiagram
 
 ## Persistence schema
 
-New entries use schema version 3. A Step owns one optional assistant contribution plus ordered tool contributions, aggregate usage, billing, status, elapsed duration, tool wall time, and cumulative tool work. Stable cycle, sequence, turn, and tool-call identities remain available for reports and safe exports.
+New entries use schema version 3. A Step owns one optional assistant contribution plus ordered tool contributions, aggregate usage, billing, status, elapsed duration, tool wall time, and cumulative tool work. Compact rendering intentionally omits subscription labels, while the persisted billing field remains available to expanded diagnostics, summaries, and safe exports. Stable cycle, sequence, turn, and tool-call identities remain available for reports and safe exports.
 
 Version-1 and version-2 records are coerced conservatively for replay. Existing sessions are never rewritten, and unavailable fields remain unavailable rather than becoming fabricated zeroes.
 

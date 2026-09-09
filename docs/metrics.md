@@ -18,7 +18,7 @@ A Step groups one assistant turn with every tool it requests. Compact mode repor
 | First | From assistant turn start to the first meaningful provider output event |
 | Tool time | Union of the Step's tool execution intervals; overlap is counted once |
 | Tokens | Assistant usage plus usage reported by model-backed tools in the Step, each source counted once |
-| Billing | Metered provider cost, subscription, or the metered subtotal plus subscription for mixed Steps |
+| Billing | Provider-reported metered cost when present; subscription and mixed scope remain available in expanded details |
 
 Expanded details retain the assistant duration, stream duration, output tokens/s, provider/model, stop reason, individual tools, and exact wall-clock timestamps. Tokens/s is unavailable when output-token usage or a positive streaming interval is unavailable. It is never calculated from total or input tokens.
 
@@ -43,7 +43,7 @@ For intervals `[0, 100]` and `[20, 80]`, wall is 100ms and work is 160ms.
 
 ## Request cycle
 
-A cycle starts when a user submission is accepted and ends when Pi reports `agent_settled`. Its compact `Total` prioritizes elapsed time, model time, tool wall time, aggregate tokens/cache, truthful billing, and recovery status. Counts, waits, and cumulative work remain in expanded details and reports.
+A cycle starts when a user submission is accepted and ends when Pi reports `agent_settled`. Its compact `Total` prioritizes elapsed time, model time, tool wall time, aggregate tokens/cache, provider-reported metered cost when present, and recovery status. Counts, waits, billing scope, and cumulative work remain in expanded details and reports.
 
 The total breaks down into:
 
@@ -68,4 +68,4 @@ TimeLens normalizes only values reported by providers:
 
 A missing category remains missing. Zero means the provider explicitly reported zero. If a model-backed tool reports usage for multiple nested results, TimeLens sums those numeric reports once before the tool joins its batch. Direct aggregate usage takes precedence over nested result details, preventing duplicate accounting. Extraction is bounded to top-level `usage`, `details.usage`, and `details.results[].usage`; deeper arbitrary payloads are ignored.
 
-When subscription and metered sources mix, token totals include every reported source while cost includes only the metered subtotal. Compact output labels this `$… + subscription`; summaries show `Billing: mixed` plus `Metered cost`. A subscription provider's informational cost metadata is never presented as payable. Reports avoid double-counting usage nested in Step or cycle records.
+Compact output never prints `sub` or `subscription`: subscription-only records show tokens without a fabricated price, metered records show provider-reported cost, and mixed records show only the metered subtotal. Expanded details identify `Billing: subscription`, `Billing: metered`, or `Billing: mixed`; mixed details and summaries label the displayed amount as `Metered cost`. A subscription provider's informational cost metadata is never presented as payable. Reports avoid double-counting usage nested in Step or cycle records.

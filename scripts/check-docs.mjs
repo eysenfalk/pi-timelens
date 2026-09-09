@@ -19,6 +19,10 @@ const readme = readFileSync(join(root, "README.md"), "utf8");
 assert.match(readme, /pi install npm:pi-timelens/u);
 assert.match(readme, /Know where the time and tokens went\./u);
 assert.match(readme, /one concise \*\*Step\*\*/u);
+assert.match(readme, /response-stream latency/u);
+assert.match(readme, /strict text TTFT/u);
+assert.match(readme, /provider-reported reasoning tokens/u);
+assert.match(readme, /Reasoning tokens are already included in provider output and total tokens/u);
 assert.match(readme, /docs\/development-workflow\.md/u);
 assert.doesNotMatch(readme, / · subscription/u, "README compact examples must omit subscription labels");
 for (const asset of ["demo.svg", "demo-mobile.svg", "gallery.webp", "gallery-mobile.webp"]) {
@@ -30,6 +34,9 @@ for (const source of ["demo.svg", "demo-mobile.svg"]) {
 	assert.match(svg, /Pi TimeLens · faithful(?: .*?)? transcript · (?:120|40) columns/u);
 	assert.match(svg, /footer, model identifier, filesystem path, and assistant reasoning are omitted/u);
 	assert.match(svg, /◆ Step/u, `${source} must show the compact Step UX`);
+	assert.match(svg, /response/u, `${source} must show response latency`);
+	assert.match(svg, /ttft/u, `${source} must show strict text TTFT`);
+	assert.doesNotMatch(svg, /◆ Step[^<]*\bfirst\b/u, `${source} must not label first output as TTFT`);
 	assert.doesNotMatch(svg, /\b(?:sub|subscription)\b/u, `${source} must omit compact subscription labels`);
 	assert.doesNotMatch(
 		svg,
@@ -42,6 +49,9 @@ for (const capture of ["real-pi-120.txt", "real-pi-40.txt"]) {
 	assert.ok(existsSync(capturePath), `capture evidence is missing: ${capture}`);
 	const captureText = readFileSync(capturePath, "utf8");
 	assert.match(captureText, /footer, model identifier, filesystem path, and assistant reasoning/u);
+	assert.match(captureText, /response/u, `${capture} must preserve response latency`);
+	assert.match(captureText, /ttft/u, `${capture} must preserve strict text TTFT`);
+	assert.doesNotMatch(captureText, /◆ Step[^\n]*\bfirst\b/u, `${capture} must not label first output as TTFT`);
 	assert.doesNotMatch(captureText, /\b(?:sub|subscription)\b/u, `${capture} must omit compact subscription labels`);
 }
 const workflow = readFileSync(join(root, "docs/development-workflow.md"), "utf8");

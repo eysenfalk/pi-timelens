@@ -4,7 +4,6 @@ import {
 	coerceTimingRecord,
 	formatLiveSnapshot,
 	formatTimingRecord,
-	isMeaningfulAssistantEvent,
 	type TimingRecord,
 	TimingTracker,
 } from "./core.ts";
@@ -239,11 +238,14 @@ export function registerMessageTiming(
 		startLive(ctx);
 	});
 
+	pi.on("message_start", (event) => {
+		if (event.message.role !== "assistant") return;
+		tracker.markResponseStart(activeTurnIndex, clock());
+	});
+
 	pi.on("message_update", (event) => {
 		if (event.message.role !== "assistant") return;
-		if (isMeaningfulAssistantEvent(event.assistantMessageEvent)) {
-			tracker.markFirstOutput(activeTurnIndex, clock());
-		}
+		tracker.noteAssistantEvent(activeTurnIndex, event.assistantMessageEvent, clock());
 		tracker.updateStreamingUsage(event.message.usage);
 		renderLive();
 	});

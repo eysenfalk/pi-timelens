@@ -25,9 +25,13 @@ export interface TimingSummary {
 	toolWorkMs: number;
 	userWaitMs: number;
 	retryWaitMs: number;
+	thinkingMs?: number;
+	reasoningTokens?: number;
 	usage?: UsageSnapshot;
 	cost?: number;
 	billing: "metered" | "subscription" | "mixed" | "unknown";
+	responseMedianMs?: number;
+	responseP95Ms?: number;
 	ttftMedianMs?: number;
 	ttftP95Ms?: number;
 	outputMedianTokensPerSecond?: number;
@@ -106,7 +110,23 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 		usage = addUsageByBilling(usage, billing, source.usage, source.billingMode);
 		billing = mergeBilling(billing, source.billingMode);
 	}
-	const ttft = assistants.flatMap((record) => (record.ttftMs === undefined ? [] : [record.ttftMs]));
+	const response = assistants.flatMap((record) => (record.responseMs === undefined ? [] : [record.responseMs]));
+	const ttft = assistants.flatMap((record) => (record.textTtftMs === undefined ? [] : [record.textTtftMs]));
+	const thinkingMs =
+		assistants.length > 0 && assistants.every((record) => record.thinkingMs !== undefined)
+			? assistants.reduce((sum, record) => sum + (record.thinkingMs ?? 0), 0)
+			: undefined;
+	const reasoningSources = [
+		...cycles.flatMap((record) => (record.totalUsage === undefined ? [] : [record.totalUsage])),
+		...assistants.filter((record) => !completedCycleIds.has(record.cycleId)).map((record) => record.usage),
+		...tools
+			.filter((record) => !completedCycleIds.has(record.cycleId) && record.usage !== undefined)
+			.map((record) => record.usage),
+	];
+	const reasoningTokens =
+		reasoningSources.length > 0 && reasoningSources.every((source) => source?.reasoning !== undefined)
+			? usage?.reasoning
+			: undefined;
 	const speeds = assistants.flatMap((record) =>
 		record.outputTokensPerSecond === undefined ? [] : [record.outputTokensPerSecond],
 	);
@@ -130,9 +150,13 @@ export function summarizeTiming(records: readonly TimingRecord[]): TimingSummary
 			uncoveredTools.reduce((sum, tool) => sum + tool.durationMs, 0),
 		userWaitMs: cycles.reduce((sum, cycle) => sum + cycle.userWaitMs, 0),
 		retryWaitMs: cycles.reduce((sum, cycle) => sum + cycle.retryWaitMs, 0),
+		thinkingMs,
+		reasoningTokens,
 		usage,
 		cost: billing === "metered" || billing === "mixed" ? usage?.cost?.total : undefined,
 		billing,
+		responseMedianMs: percentile(response, 0.5),
+		responseP95Ms: percentile(response, 0.95),
 		ttftMedianMs: percentile(ttft, 0.5),
 		ttftP95Ms: percentile(ttft, 0.95),
 		outputMedianTokensPerSecond: percentile(speeds, 0.5),
@@ -158,6 +182,7 @@ export function formatSummary(summary: TimingSummary, display: { showCost?: bool
 		`${formatCount(summary.cycles, "cycle")} · ${formatCount(summary.assistantSteps, "model step")} · ${formatCount(summary.tools, "tool")}`,
 		metric("Elapsed", formatDuration(summary.elapsedMs)),
 		metric("Model, cumulative", formatDuration(summary.assistantMs)),
+		...(summary.thinkingMs === undefined ? [] : [metric("Thinking phase", formatDuration(summary.thinkingMs))]),
 		metric("Tool wall time", formatDuration(summary.toolWallMs)),
 		metric("Tool work, cumulative", formatDuration(summary.toolWorkMs)),
 		metric("Waiting for user", formatDuration(summary.userWaitMs)),
@@ -169,6 +194,9 @@ export function formatSummary(summary: TimingSummary, display: { showCost?: bool
 			metric("Tokens", `Σ${formatCompactTokens(summary.usage.totalTokens)}`),
 			metric("  Input", formatCompactTokens(summary.usage.input)),
 			metric("  Output", formatCompactTokens(summary.usage.output)),
+			...(summary.reasoningTokens === undefined
+				? []
+				: [metric("  Reasoning", formatCompactTokens(summary.reasoningTokens))]),
 			metric("  Cache read", formatCompactTokens(summary.usage.cacheRead)),
 			metric("  Cache write", formatCompactTokens(summary.usage.cacheWrite)),
 		);
@@ -178,8 +206,12 @@ export function formatSummary(summary: TimingSummary, display: { showCost?: bool
 		lines.push(metric("Billing", "mixed"));
 		if (showCost && summary.cost !== undefined) lines.push(metric("Metered cost", `$${summary.cost.toFixed(4)}`));
 	} else if (showCost && summary.cost !== undefined) lines.push(metric("Cost", `$${summary.cost.toFixed(4)}`));
-	if (summary.ttftMedianMs !== undefined) lines.push(metric("TTFT median", formatDuration(summary.ttftMedianMs)));
-	if (summary.ttftP95Ms !== undefined) lines.push(metric("TTFT p95", formatDuration(summary.ttftP95Ms)));
+	if (summary.responseMedianMs !== undefined) {
+		lines.push(metric("Response median", formatDuration(summary.responseMedianMs)));
+	}
+	if (summary.responseP95Ms !== undefined) lines.push(metric("Response p95", formatDuration(summary.responseP95Ms)));
+	if (summary.ttftMedianMs !== undefined) lines.push(metric("Text TTFT median", formatDuration(summary.ttftMedianMs)));
+	if (summary.ttftP95Ms !== undefined) lines.push(metric("Text TTFT p95", formatDuration(summary.ttftP95Ms)));
 	if (summary.outputMedianTokensPerSecond !== undefined) {
 		lines.push(metric("Output median", `${summary.outputMedianTokensPerSecond.toFixed(1)} tok/s`));
 	}
@@ -211,9 +243,18 @@ export function formatTimeline(records: readonly TimingRecord[]): string[] {
 		} else if (record.kind === "step") {
 			lines.push(`${formatTimestamp(record.startedAt)}  step   ${formatDuration(record.durationMs)}  ${record.status}`);
 			if (record.assistant) {
-				lines.push(
-					`              └ model  ${formatDuration(record.assistant.durationMs)}  ${formatUsageCompact(record.assistant.usage)}`,
-				);
+				const modelSegments = [
+					`              └ model  ${formatDuration(record.assistant.durationMs)}`,
+					record.assistant.responseMs === undefined
+						? undefined
+						: `response ${formatDuration(record.assistant.responseMs)}`,
+					record.assistant.textTtftMs === undefined ? undefined : `ttft ${formatDuration(record.assistant.textTtftMs)}`,
+					record.assistant.thinkingMs === undefined
+						? undefined
+						: `think ${formatDuration(record.assistant.thinkingMs)}`,
+					formatUsageCompact(record.assistant.usage),
+				];
+				lines.push(modelSegments.filter(Boolean).join("  "));
 			}
 			for (const tool of record.tools) {
 				lines.push(`              └ ${tool.toolName}  ${formatDuration(tool.durationMs)}  ${tool.status}`);
@@ -236,6 +277,7 @@ function safeUsage(usage: UsageSnapshot | undefined, billingMode: BillingMode): 
 		cacheRead: field("cacheRead"),
 		cacheWrite: field("cacheWrite"),
 		totalTokens: field("totalTokens"),
+		reasoning: usage.reasoning,
 		cost: billingMode === "subscription" || !usage.cost ? undefined : { total: usage.cost.total },
 	};
 }
@@ -261,6 +303,9 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 			endedAt: record.endedAt,
 			durationMs: record.durationMs,
 			ttftMs: record.ttftMs,
+			responseMs: record.responseMs,
+			textTtftMs: record.textTtftMs,
+			thinkingMs: record.thinkingMs,
 			streamingMs: record.streamingMs,
 			outputTokensPerSecond: record.outputTokensPerSecond,
 			usage: safeUsage(record.usage, record.billingMode),
@@ -315,6 +360,7 @@ function safeExportRecord(record: TimingRecord): Record<string, unknown> {
 		endedAt: record.endedAt,
 		durationMs: record.durationMs,
 		assistantDurationMs: record.assistantDurationMs,
+		assistantThinkingMs: record.assistantThinkingMs,
 		toolWallMs: record.toolWallMs,
 		toolWorkMs: record.toolWorkMs,
 		assistantSteps: record.assistantSteps,
@@ -356,12 +402,16 @@ export function exportTimingCsv(records: readonly TimingRecord[]): string {
 		"startedAt",
 		"endedAt",
 		"durationMs",
+		"responseMs",
+		"textTtftMs",
+		"thinkingMs",
 		"wallMs",
 		"workMs",
 		"status",
 		"billingMode",
 		"input",
 		"output",
+		"reasoning",
 		"cacheRead",
 		"cacheWrite",
 		"totalTokens",
@@ -379,6 +429,7 @@ export function exportTimingCsv(records: readonly TimingRecord[]): string {
 						: undefined;
 		const stepId = record.kind === "step" ? `${record.cycleId}:turn-${record.turnIndex}` : "";
 		const billingMode = "billingMode" in record ? record.billingMode : "unknown";
+		const assistant = record.kind === "assistant" ? record : record.kind === "step" ? record.assistant : undefined;
 		rows.push([
 			record.schemaVersion,
 			record.cycleId,
@@ -393,12 +444,16 @@ export function exportTimingCsv(records: readonly TimingRecord[]): string {
 			"startedAt" in record ? record.startedAt : record.submittedAt,
 			"endedAt" in record ? record.endedAt : "",
 			"durationMs" in record ? record.durationMs : "",
+			assistant?.responseMs ?? "",
+			assistant?.textTtftMs ?? "",
+			record.kind === "cycle" ? (record.assistantThinkingMs ?? "") : (assistant?.thinkingMs ?? ""),
 			record.kind === "batch" ? record.wallMs : record.kind === "step" ? record.toolWallMs : "",
 			record.kind === "batch" ? record.workMs : record.kind === "step" ? record.toolWorkMs : "",
 			"status" in record ? record.status : "",
 			billingMode,
 			usage?.reported?.input === false ? undefined : usage?.input,
 			usage?.reported?.output === false ? undefined : usage?.output,
+			usage?.reasoning,
 			usage?.reported?.cacheRead === false ? undefined : usage?.cacheRead,
 			usage?.reported?.cacheWrite === false ? undefined : usage?.cacheWrite,
 			usage?.reported?.totalTokens === false ? undefined : usage?.totalTokens,

@@ -1,6 +1,46 @@
 # Release evaluation — 1.0.0-rc.0
 
-Evaluation date: 2026-09-09. Status: isolated compact billing-label candidate; npm publication was not authorized and has not been performed.
+Evaluation date: 2026-09-09. Status: isolated response/TTFT/thinking candidate; the active installation remains unchanged, and npm publication was not authorized or performed.
+
+## Response, TTFT, and thinking candidate
+
+GitHub issue: [#8 — Separate response latency, text TTFT, and thinking in Step timing](https://github.com/eysenfalk/pi-timelens/issues/8)
+
+### Root-cause diagnosis and decision
+
+The former compact `first` metric was `turn_start → first meaningful assistant event`. Because Pi classifies text, thinking, and tool-call deltas as meaningful output, that number could end at a thinking delta or tool-call delta rather than visible text. TimeLens did **not** convert thinking tokens into time or add token counts to latency; the label combined distinct event milestones and therefore looked like TTFT when it was not.
+
+The candidate replaces that ambiguous compact field with evidence-bounded metrics:
+
+- `response`: `turn_start → message_start`, with the first assistant update as the documented fallback when the start event is unavailable;
+- `ttft`: `turn_start → first non-empty text delta`, omitted for tool-only turns;
+- `think`: summed `thinking_start` → `thinking_end` windows when present; if positive reasoning tokens are the only evidence, response-stream start → first text/tool action is used as a provider-evidenced fallback phase;
+- `reasoning`: the provider-reported reasoning-token subset, displayed separately but never added again to output or total tokens.
+
+Legacy V1/V2/V3 records replay with their original `First output` meaning in expanded diagnostics. The persisted schema remains V3 and receives only optional fields, so no migration or Pi-core change is required.
+
+### Deterministic and package gates
+
+- `npm run check`: 66 tests pass on Node 24.20.0; TypeScript, Biome, documentation, workflow, package, and source-parity checks pass.
+- Focused regressions cover distinct response start versus text TTFT, tool-only turns, unfinished thinking windows, positive/zero/absent reasoning telemetry, monotonic timing, incomplete summary subtotals, responsive wrapping, and safe JSON/CSV export.
+- `npm run smoke:packed`: the exact packed artifact installs offline in a temporary Pi home, loads state, and registers `/timing` without credentials or provider calls.
+- Package contract: 22 intended files, 172,136 unpacked bytes; no runtime dependencies or install hooks.
+- The candidate benchmark measured 5.088 µs/cycle for 20,000 cycles, below the 500 µs budget.
+
+### Real Pi evidence and honest limits
+
+- Real Pi 0.85.1 PTYs loaded only the candidate at 120 and 40 columns and completed a two-read parallel-tool turn.
+- The 120-column compact transcript showed `response 830ms` for the tool-producing Step and `response 432ms · ttft 1.77s` for the final text Step. The 40-column transcript reflowed the same metric order without clipping.
+- `Ctrl+O` showed `Response`, `Text TTFT`, `Thinking`, and `Reasoning` as separate detailed fields. Tool-only Steps omitted compact `ttft`.
+- Provider-backed checks with `openai-codex/gpt-5.6-luna:low` and `openai-codex/gpt-6-astra:low|high` reported `Reasoning: 0`; therefore the compact UI truthfully omitted `think` and reasoning-token segments. This evidence does not justify inferring hidden thinking from otherwise unexplained model time.
+- Sanitized fixtures and faithful SVG/WebP redraws were refreshed from ignored raw captures `a8f3ea3…23c3` (120 columns) and `a0c4603…fda2` (40 columns). Visual inspection confirmed readable desktop and mobile assets.
+- The installed Pi extension remains the unchanged merged PR #7 champion at `5126de313ec9574008de0cb554a917418628403a`; this candidate has not been deployed.
+
+### Champion comparison and rollback boundary
+
+The unchanged installed champion passes 58 tests and measured 5.577 µs/cycle in the same host session. It labels the first meaningful text/thinking/tool event as compact `first`. The candidate adds eight regression tests, measures 5.088 µs/cycle in the final run (normal microbenchmark variance, no claimed speedup), and distinguishes response-stream latency from strict visible-text TTFT while exposing reasoning only when the provider reports it. No active-harness file changes in this candidate; rollback is deleting/resetting the isolated branch.
+
+The first independent code review blocked two correctness gaps: thinking-event durations included silence outside the observed windows, and branch reasoning subtotals ignored model-backed tool usage. The fixes now sum exact event windows, document the positive-token fallback separately, and derive reasoning from the same complete usage source set as the total. The first visual review blocked incorrect emphasis on narrow continuation lines; the SVG and WebP now use Pi's captured muted continuation role. The original code reviewer verified the final completeness guard and returned `DEPLOY`; the original visual reviewer verified the regenerated mobile asset and returned `DEPLOY` with no remaining findings.
 
 ## Compact billing-label candidate
 

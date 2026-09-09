@@ -132,6 +132,8 @@ Assert the actual behavior, not only visual resemblance:
 - both reads belong to one Step in source order;
 - compact output does not repeat member timing rows already represented by Pi's native tool cards;
 - assistant and model-backed-tool usage appears once at Step scope;
+- `response` is distinct from strict text `ttft`, tool-only turns omit `ttft`, and `think` appears only from observed/reported reasoning evidence;
+- provider-reported reasoning tokens remain a subset of output/total and are not added again;
 - compact Steps and Totals contain no `sub` or `subscription` label, while expanded records retain billing scope;
 - the final Total is settled and no live status remains;
 - unrelated startup or renderer errors are absent;
@@ -163,7 +165,7 @@ The accepted captures used a manual, inspectable extraction rather than an undoc
 2. Read the PTY emulator's current `screen` view and retain that final visible frame as private test evidence.
 3. Exit Pi cleanly, then inspect the corresponding raw ANSI log around its final writes to confirm that the screen view did not omit a later state.
 4. Copy only the representative prompt/tool/result and TimeLens-owned settled lines into a width-specific text fixture.
-5. Remove startup help, transient working frames, update notices, footer, model identifier, and filesystem paths exactly as declared in the fixture header. Do not perform any other rewriting.
+5. Remove startup help, transient working frames, update notices, footer, model identifier, filesystem paths, and assistant reasoning content exactly as declared in the fixture header. Do not perform any other rewriting.
 6. Compare fixture text, order, values, and line breaks against the retained final screen line by line. Record manual review; no automated ANSI replay or text extractor was used for the current assets.
 
 For each accepted width, preserve the resulting sanitized fixture:
@@ -171,7 +173,7 @@ For each accepted width, preserve the resulting sanitized fixture:
 - [`tests/fixtures/real-pi-120.txt`](../tests/fixtures/real-pi-120.txt)
 - [`tests/fixtures/real-pi-40.txt`](../tests/fixtures/real-pi-40.txt)
 
-Each fixture records the Pi version, terminal width, capture date, journey, and declared omissions. The current fixtures omit startup help, transient working UI, update notices, footer, model identifiers, and filesystem paths. They preserve TimeLens text, order, values, success state, and wrapping exactly.
+Each fixture records the Pi version, terminal width, capture date, journey, and declared omissions. The current fixtures omit startup help, transient working UI, update notices, footer, model identifiers, filesystem paths, and assistant reasoning content. They preserve TimeLens text, order, values, success state, and wrapping exactly.
 
 Sanitization may remove irrelevant private context, but it must never make the extension appear faster, cheaper, more correct, or more attractive. Search the candidate fixture and SVG source for user names, home paths, unrelated repositories, secrets, keys, and session IDs before committing. Never inspect secret stores merely to perform this search.
 
@@ -203,7 +205,7 @@ Record the renderer and font environment when reproducing the images. SVG-to-Web
 
 Open both rendered images at native size and at the size GitHub will display. Inspect legibility, crop, line spacing, contrast, source parity, and mobile composition. The README uses responsive `<picture>` markup so the narrow WebP is selected below 600 px.
 
-`scripts/check-docs.mjs` guards the media contract: local Markdown links resolve, all four source/rendered assets exist, SVG provenance names real Pi 0.85.1 sessions and the correct widths, stale illustrative strings cannot return, and both sanitized capture fixtures exist. `scripts/check-package.mjs` separately proves that intended media enters the tarball while raw captures and test fixtures do not.
+`scripts/check-docs.mjs` guards the media contract: local Markdown links resolve, all four source/rendered assets exist, SVG provenance names real Pi 0.85.1 sessions and the correct widths, stale illustrative strings cannot return, response/thinking metrics remain present, and both sanitized capture fixtures exist. `scripts/check-package.mjs` separately proves that intended media enters the tarball while raw captures and test fixtures do not.
 
 ## 10. Compare, review, and promote deliberately
 

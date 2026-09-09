@@ -38,6 +38,9 @@ const assistant: Extract<TimingRecord, { kind: "assistant" }> = {
 	endedAt: 2_000,
 	durationMs: 1_000,
 	ttftMs: 200,
+	responseMs: 100,
+	textTtftMs: 400,
+	thinkingMs: 250,
 	streamingMs: 800,
 	outputTokensPerSecond: 50,
 	usage: {
@@ -46,6 +49,7 @@ const assistant: Extract<TimingRecord, { kind: "assistant" }> = {
 		cacheRead: 500,
 		cacheWrite: 10,
 		totalTokens: 650,
+		reasoning: 10,
 		cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 },
 	},
 	billingMode: "metered",
@@ -76,6 +80,7 @@ const records: TimingRecord[] = [
 		endedAt: 3_000,
 		durationMs: 2_100,
 		assistantDurationMs: 1_000,
+		assistantThinkingMs: 250,
 		toolWallMs: 400,
 		toolWorkMs: 550,
 		assistantSteps: 1,
@@ -111,13 +116,70 @@ test("summarizes cycles without double-counting nested Step usage", () => {
 	assert.equal(summary.toolWorkMs, 550);
 	assert.equal(summary.usage?.totalTokens, 650);
 	assert.equal(summary.cost, 0.003);
-	assert.equal(summary.ttftMedianMs, 200);
+	assert.equal(summary.responseMedianMs, 100);
+	assert.equal(summary.ttftMedianMs, 400);
+	assert.equal(summary.thinkingMs, 250);
+	assert.equal(summary.reasoningTokens, 10);
 	assert.equal(summary.outputMedianTokensPerSecond, 50);
 	assert.deepEqual(summary.slowestTool, { name: "bash", durationMs: 400 });
 	assert.equal(summary.failures, 1);
 	const rendered = formatSummary(summary).join("\n");
 	assert.match(rendered, /1 cycle · 1 model step · 2 tools/);
+	assert.match(rendered, /Thinking phase\s+250ms/);
+	assert.match(rendered, /Reasoning\s+10/);
+	assert.match(rendered, /Response median\s+100ms/);
+	assert.match(rendered, /Text TTFT median\s+400ms/);
 	assert.match(rendered, /Cache read/);
+});
+
+test("omits incomplete reasoning-token subtotals from branch summaries", () => {
+	const withoutReasoning = {
+		...assistant,
+		cycleId: "cycle-without-reasoning",
+		thinkingMs: undefined,
+		usage: assistant.usage ? { ...assistant.usage, reasoning: undefined } : undefined,
+	};
+	const summary = summarizeTiming([assistant, withoutReasoning]);
+	assert.equal(summary.thinkingMs, undefined);
+	assert.equal(summary.reasoningTokens, undefined);
+	assert.doesNotMatch(formatSummary(summary).join("\n"), /Thinking phase|Reasoning/);
+
+	const missingUsage = { ...assistant, cycleId: "cycle-without-usage", usage: undefined };
+	const missingUsageSummary = summarizeTiming([assistant, missingUsage]);
+	assert.equal(missingUsageSummary.usage?.reasoning, 10);
+	assert.equal(missingUsageSummary.reasoningTokens, undefined);
+	assert.doesNotMatch(formatSummary(missingUsageSummary).join("\n"), /\bReasoning\b/);
+});
+
+test("includes model-backed tool reasoning only when every summary usage source reports it", () => {
+	const baseStep = records[0];
+	assert.equal(baseStep?.kind, "step");
+	if (baseStep?.kind !== "step") return;
+	const toolWithReasoning: ToolTimingRecord = {
+		...tool("reasoning-tool", "agent", 300),
+		usage: {
+			input: 20,
+			output: 10,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 30,
+			reasoning: 4,
+		},
+		billingMode: "metered",
+	};
+	const complete = summarizeTiming([{ ...baseStep, tools: [toolWithReasoning] }]);
+	assert.equal(complete.usage?.reasoning, 14);
+	assert.equal(complete.reasoningTokens, 14);
+	assert.match(formatSummary(complete).join("\n"), /Reasoning\s+14/);
+
+	const toolWithoutReasoning: ToolTimingRecord = {
+		...toolWithReasoning,
+		usage: toolWithReasoning.usage ? { ...toolWithReasoning.usage, reasoning: undefined } : undefined,
+	};
+	const incomplete = summarizeTiming([{ ...baseStep, tools: [toolWithoutReasoning] }]);
+	assert.equal(incomplete.usage?.reasoning, undefined);
+	assert.equal(incomplete.reasoningTokens, undefined);
+	assert.doesNotMatch(formatSummary(incomplete).join("\n"), /\bReasoning\b/);
 });
 
 test("formats a branch-local timeline with one Step and its members", () => {
@@ -133,6 +195,10 @@ test("exports only bounded timing metadata as JSON", () => {
 	const parsed = JSON.parse(json);
 	assert.equal(parsed.scope, "current-branch");
 	assert.equal(parsed.records.length, 2);
+	assert.equal(parsed.records[0].assistant.responseMs, 100);
+	assert.equal(parsed.records[0].assistant.textTtftMs, 400);
+	assert.equal(parsed.records[0].assistant.thinkingMs, 250);
+	assert.equal(parsed.records[0].assistant.usage.reasoning, 10);
 	assert.doesNotMatch(json, /prompt|arguments|content|toolOutput/i);
 });
 
@@ -140,8 +206,8 @@ test("exports Steps and nested members as valid CSV rows", () => {
 	const csv = exportTimingCsv(records);
 	const lines = csv.trim().split("\n");
 	assert.equal(lines.length, 6); // header + Step + nested assistant + 2 tools + cycle
-	assert.match(lines[0]!, /stepId,parentStepId/);
-	assert.match(lines[0]!, /status,billingMode,input/);
+	assert.match(lines[0]!, /durationMs,responseMs,textTtftMs,thinkingMs/);
+	assert.match(lines[0]!, /status,billingMode,input,output,reasoning/);
 	assert.match(csv, /cycle-1:turn-0/);
 	assert.doesNotMatch(csv, /secret/);
 });

@@ -15,16 +15,16 @@ It also emits the process-local `message-timing:state` event for optional footer
 ## What records can contain
 
 - record, cycle, turn, Step, and tool-call identifiers;
-- wall-clock timestamps and monotonic durations;
+- wall-clock timestamps and monotonic durations, including response, text-TTFT, and observed thinking windows;
 - status and failure/abort counts;
 - tool names, but not tool arguments or output;
-- provider-reported numeric token and cost fields;
+- provider-reported numeric token and cost fields, including optional reasoning-token counts;
 - billing mode.
 
 ## What records and exports exclude
 
 - user prompts;
-- assistant text or reasoning;
+- assistant text or reasoning content;
 - tool arguments;
 - tool output;
 - credentials and provider configuration;

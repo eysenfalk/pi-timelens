@@ -41,7 +41,7 @@ interface MessageTimingState {
 }
 ```
 
-Consumers must tolerate unknown fields and missing optional fields. Treat the schema version as a compatibility boundary. `session.billingMode` is an additive schema-V1 field and remains optional for compatibility with older producers; when present, it identifies whether `session.cost` is a metered amount or a mixed session's metered subtotal. Subscription sessions omit cost. Do not infer absent token categories as zero, and do not persist the `text` presentation field as a data contract.
+Consumers must tolerate unknown fields and missing optional fields. Treat the schema version as a compatibility boundary. `session.billingMode` is an additive schema-V1 field and remains optional for compatibility with older producers; when present, it identifies whether `session.cost` is a metered amount or a mixed session's metered subtotal. `ProviderUsage.reasoning`, when present, is a provider-reported subset of output and total tokens rather than an additional token category. Subscription sessions omit cost. Do not infer absent token categories as zero, and do not persist the `text` presentation field as a data contract.
 
 ## Responsibility split
 

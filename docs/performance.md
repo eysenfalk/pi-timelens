@@ -16,5 +16,6 @@ The benchmark warms the runtime, then creates, settles, and formats 20,000 synth
 | Date | Node | Host | Iterations | Mean |
 | --- | --- | --- | ---: | ---: |
 | 2026-09-07 | 24.20.0 | x86_64 AMD EPYC 9634 | 20,000 | 6.30µs/cycle |
+| 2026-09-09 | 24.20.0 | x86_64 AMD EPYC 9634 | 20,000 | 5.09µs/cycle |
 
 This is a pure-core microbenchmark. It does not measure provider latency, terminal rendering, filesystem latency, or Pi's own event dispatch. Compare results on the same host and runtime before drawing conclusions.

@@ -12,7 +12,7 @@ Local timing and token observability for the [Pi coding agent](https://github.co
 
 </div>
 
-Pi TimeLens makes agent latency legible without repeating Pi's transcript. Each model turn and its tools become one concise **Step** with elapsed time, first-output latency, tool wall time, tokens, and provider-reported metered cost when relevant. Each request closes with one **Total** that answers whether time went to the model or tools. Exact timestamps, billing scope, throughput, per-tool timing, and full token categories remain one expansion away. Everything stays local, display-only, and outside model context.
+Pi TimeLens makes agent latency legible without repeating Pi's transcript. Each model turn and its tools become one concise **Step** with elapsed time, response-stream latency, strict text TTFT when text exists, observed thinking time, provider-reported reasoning tokens, tool wall time, tokens, and provider-reported metered cost when relevant. Each request closes with one **Total** that answers whether time went to the model, thinking, or tools. Exact timestamps, billing scope, throughput, per-tool timing, and full token categories remain one expansion away. Everything stays local, display-only, and outside model context.
 
 > [!IMPORTANT]
 > This public repository contains the reviewed `1.0.0` release candidate. npm publication remains separately gated; the registry install command below becomes available with that release.
@@ -45,29 +45,31 @@ _Faithful transcript redraws from real Pi 0.85.1 sessions at desktop and narrow 
 | Lens | What it reveals |
 | --- | --- |
 | Live | Current phase and elapsed time while Pi is working |
-| Step | One model turn plus its tools: duration, first output, tool wall time, provider-reported tokens, and metered cost when present |
-| Total | Full request duration split into model and tool time, with aggregate usage and recovery status |
-| Details | Exact timestamps, streaming time, output speed, cumulative tool work, ordered tool timings, full token categories, model, and stop reason |
+| Step | One model turn plus its tools: duration, response latency, optional text TTFT, thinking, tool wall time, provider-reported tokens, and metered cost when present |
+| Total | Full request duration split into model, observed thinking, and tool time, with aggregate usage and recovery status |
+| Details | Exact timestamps, response and first-output diagnostics, streaming time, output speed, cumulative tool work, ordered tool timings, full token categories, model, and stop reason |
 | Session | Current-branch summary, timeline, safe JSON/CSV export, and content-free footer telemetry |
 
 ```text
-◆ Step · 12.1s · first 5.57s · 7 tools 56ms
+◆ Step · 12.1s · response 410ms · think 4.8s/1.2k tok · 7 tools 56ms
   282k tokens · 275k cached
 
-◆ Total · 20.2s · model 19.4s · tools 119ms
+◆ Total · 20.2s · model 19.4s · think 8.1s/2.1k tok · tools 119ms
   368k tokens · 360k cached
 ```
 
 Pi's native tool cards already show which tool ran, its target, and its result. Compact TimeLens output therefore does not repeat `read`, `edit`, or every member of a parallel group. A single tool is folded into its Step just like a parallel group:
 
 ```text
-◆ Step · 8.60s · first 5.21s · tool 56ms
-  86k tokens · 85k cached
+◆ Step · 8.60s · response 380ms · ttft 5.21s · think 4.6s/980 tok
+  tool 56ms · 86k tokens · 85k cached
 ```
+
+`response` measures until Pi receives the assistant response stream. `ttft` is stricter: it appears only when a non-empty text delta exists. When Pi emits thinking events, `think` sums the observed `thinking_start` → `thinking_end` windows. If positive provider-reported reasoning tokens are the only thinking evidence, TimeLens instead uses response-stream start → first text/tool action as a provider-evidenced phase. Providers with neither signal receive no invented `think` value. Reasoning tokens are already included in provider output and total tokens, so TimeLens does not add them again.
 
 Compact Steps and Totals omit redundant subscription labels. Subscription-backed usage still shows tokens and cache data without a fabricated price. Metered usage shows only the provider-reported cost; mixed sources show only the metered subtotal. Ordinary tools add no invented token usage; model-backed tools contribute only usage they report, exactly once, to the whole Step.
 
-Press `Ctrl+O` to reveal billing mode, the model and individual tool contributions, exact times, `wall` versus cumulative `work`, output tokens/s, and complete input/output/cache categories. Missing provider fields stay unavailable rather than becoming fabricated zeros.
+Press `Ctrl+O` to reveal billing mode, response latency, strict text TTFT, legacy first-output timing, the evidence-qualified thinking phase, the model and individual tool contributions, exact times, `wall` versus cumulative `work`, output tokens/s, and complete input/output/reasoning/cache categories. Missing provider fields stay unavailable rather than becoming fabricated zeros.
 
 ## Commands
 
@@ -90,11 +92,11 @@ See [Commands and settings](docs/commands.md) for examples and defaults.
 ## Designed for trustworthy measurements
 
 - **Monotonic durations:** system clock adjustments cannot create negative or inflated elapsed times.
-- **Provider truth only:** absent usage and cost fields remain unavailable; TimeLens does not fabricate zeros.
+- **Provider truth only:** absent usage, reasoning-token, and cost fields remain unavailable; TimeLens does not fabricate zeros.
 - **Correct concurrency:** compact Steps show elapsed tool wall time; expanded details distinguish the interval union (`wall`) from the duration sum (`work`).
 - **Recoverable failures:** a later successful assistant step restores `◆ Total` while failure counts remain visible; aborts stay sticky.
 - **Branch-aware reports:** summaries, timelines, and exports use only the active session branch.
-- **Schema compatibility:** new Step records use V3; legacy V1 and V2 timing entries remain readable without rewriting sessions.
+- **Schema compatibility:** new Step records use V3 with additive optional response, text-TTFT, thinking, and reasoning fields; legacy V1 and V2 timing entries remain readable without rewriting sessions.
 - **Responsive output:** compact rendering budgets every line for narrow terminals.
 
 Metric definitions and edge cases are documented in [Metrics](docs/metrics.md). The reproducible microbenchmark and its limits are in [Performance](docs/performance.md).
@@ -168,6 +170,20 @@ Parallel tools overlap. Expanded `wall` measures elapsed time across the union o
 <summary>What does a Step's token and price total include?</summary>
 
 The assistant call and any model-backed tools in that turn, using only provider-reported values. Ordinary tools add time but no token usage. Mixed billing includes all reported tokens while compact output shows only the metered subtotal; expand the record or use `/timing summary` to inspect billing scope.
+
+</details>
+
+<details>
+<summary>Why can a Step omit TTFT?</summary>
+
+Strict TTFT requires a non-empty text delta. Tool-only turns can stream reasoning and tool calls without ever producing user-visible text, so TimeLens shows response and thinking metrics but does not mislabel another event as text TTFT.
+
+</details>
+
+<details>
+<summary>Are reasoning tokens added to total tokens?</summary>
+
+No. Provider-reported reasoning tokens are a subset of output and total tokens. TimeLens displays the subset for explanation but never adds it to the totals again. If the provider omits the field, TimeLens omits it too.
 
 </details>
 

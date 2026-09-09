@@ -82,6 +82,9 @@ test("dispatches English summary, timeline, legend, and help panels", async () =
 	assert.equal(h.panels.length, 4);
 	assert.match(h.panels[0]!.join("\n"), /current branch/);
 	assert.match(h.panels[1]!.join("\n"), /timeline/);
+	assert.match(h.panels[2]!.join("\n"), /response stream starts/);
+	assert.match(h.panels[2]!.join("\n"), /first non-empty text delta/);
+	assert.match(h.panels[2]!.join("\n"), /reasoning tokens/);
 	assert.match(h.panels[2]!.join("\n"), /cache-read/);
 	assert.match(h.panels[2]!.join("\n"), /omit redundant subscription labels/);
 	assert.match(h.panels[3]!.join("\n"), /Pi TimeLens/);

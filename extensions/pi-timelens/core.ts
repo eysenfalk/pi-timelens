@@ -27,6 +27,8 @@ export interface UsageSnapshot {
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
+	/** Provider-reported reasoning tokens. They remain a subset of output/total tokens. */
+	reasoning?: number;
 	cost?: CostSnapshot;
 	/** Omitted means every token category is exact (V1/V2 compatibility). */
 	reported?: UsageFieldPresence;
@@ -56,7 +58,14 @@ export interface AssistantTimingRecord extends RecordBase {
 	startedAt: number;
 	endedAt: number;
 	durationMs: number;
+	/** Legacy time to the first meaningful provider delta, retained for replay compatibility. */
 	ttftMs?: number;
+	/** Time from turn start until the assistant response stream starts. */
+	responseMs?: number;
+	/** Strict time from turn start until the first non-empty text delta. */
+	textTtftMs?: number;
+	/** Observed reasoning phase from response start until the first text/tool delta. */
+	thinkingMs?: number;
 	streamingMs?: number;
 	outputTokensPerSecond?: number;
 	usage?: UsageSnapshot;
@@ -112,6 +121,8 @@ export interface CycleTimingRecord extends RecordBase {
 	endedAt: number;
 	durationMs: number;
 	assistantDurationMs: number;
+	/** Cumulative observed reasoning-phase time across assistant steps. */
+	assistantThinkingMs?: number;
 	toolWallMs: number;
 	toolWorkMs: number;
 	assistantSteps: number;
@@ -141,6 +152,8 @@ interface ActiveCycle {
 	started: ClockReading;
 	sequence: number;
 	assistantDurationMs: number;
+	assistantThinkingMs: number;
+	assistantThinkingComplete: boolean;
 	assistantSteps: number;
 	toolCalls: number;
 	toolFailures: number;
@@ -158,7 +171,13 @@ interface ActiveCycle {
 interface ActiveTurn {
 	turnIndex: number;
 	started: ClockReading;
+	responseStarted?: ClockReading;
 	firstOutput?: ClockReading;
+	firstText?: ClockReading;
+	firstAction?: ClockReading;
+	thinkingStarted?: ClockReading;
+	observedThinkingMs: number;
+	thinkingObserved: boolean;
 	assistant?: AssistantTimingRecord;
 	assistantEndedMono?: number;
 	toolCallIds: string[];
@@ -226,6 +245,7 @@ export function normalizeUsage(value: unknown): UsageSnapshot | undefined {
 	const output = finiteNonNegative(usage.output);
 	const cacheRead = finiteNonNegative(usage.cacheRead);
 	const cacheWrite = finiteNonNegative(usage.cacheWrite);
+	const reasoning = hasFiniteNumber(usage, "reasoning") ? finiteNonNegative(usage.reasoning) : undefined;
 	const reported = {
 		input: hasFiniteNumber(usage, "input"),
 		output: hasFiniteNumber(usage, "output"),
@@ -242,6 +262,7 @@ export function normalizeUsage(value: unknown): UsageSnapshot | undefined {
 		cacheRead,
 		cacheWrite,
 		totalTokens: hasFiniteNumber(usage, "totalTokens") ? reportedTotal : input + output + cacheRead + cacheWrite,
+		reasoning,
 		cost: normalizeCost(usage.cost),
 		reported: Object.values(reported).every(Boolean) ? undefined : reported,
 	};
@@ -287,6 +308,8 @@ export function addUsage(left?: UsageSnapshot, right?: UsageSnapshot): UsageSnap
 		cacheRead: left.cacheRead + right.cacheRead,
 		cacheWrite: left.cacheWrite + right.cacheWrite,
 		totalTokens: left.totalTokens + right.totalTokens,
+		reasoning:
+			left.reasoning !== undefined && right.reasoning !== undefined ? left.reasoning + right.reasoning : undefined,
 		cost: addCost(left.cost, right.cost),
 		reported: Object.values(reported).every(Boolean) ? undefined : reported,
 	};
@@ -472,14 +495,50 @@ export class TimingTracker {
 	startTurn(turnIndex: number, at: ClockReading): void {
 		this.ensureCycle(at);
 		this.activeTurnIndex = turnIndex;
-		this.turns.set(turnIndex, { turnIndex, started: at, toolCallIds: [] });
+		this.turns.set(turnIndex, {
+			turnIndex,
+			started: at,
+			observedThinkingMs: 0,
+			thinkingObserved: false,
+			toolCallIds: [],
+		});
 		this.assistantStreaming = true;
 		this.streamingUsage = undefined;
+	}
+
+	markResponseStart(turnIndex: number, at: ClockReading): void {
+		const turn = this.turns.get(turnIndex);
+		if (turn && !turn.responseStarted) turn.responseStarted = at;
 	}
 
 	markFirstOutput(turnIndex: number, at: ClockReading): void {
 		const turn = this.turns.get(turnIndex);
 		if (turn && !turn.firstOutput) turn.firstOutput = at;
+	}
+
+	noteAssistantEvent(turnIndex: number, value: unknown, at: ClockReading): void {
+		const turn = this.turns.get(turnIndex);
+		if (!turn || !value || typeof value !== "object") return;
+		this.markResponseStart(turnIndex, at);
+		const event = value as Record<string, unknown>;
+		const type = String(event.type);
+		if (isMeaningfulAssistantEvent(event)) this.markFirstOutput(turnIndex, at);
+		if (type === "text_delta" && typeof event.delta === "string" && event.delta.length > 0) {
+			if (!turn.firstText) turn.firstText = at;
+			if (!turn.firstAction) turn.firstAction = at;
+		} else if (type === "toolcall_delta" && isMeaningfulAssistantEvent(event) && !turn.firstAction) {
+			turn.firstAction = at;
+		}
+		if (type === "thinking_start") {
+			turn.thinkingObserved = true;
+			if (!turn.thinkingStarted) turn.thinkingStarted = at;
+		} else if (type === "thinking_delta") {
+			turn.thinkingObserved = true;
+			if (!turn.thinkingStarted) turn.thinkingStarted = at;
+		} else if (type === "thinking_end" && turn.thinkingStarted) {
+			turn.observedThinkingMs += elapsed(turn.thinkingStarted, at);
+			turn.thinkingStarted = undefined;
+		}
 	}
 
 	updateStreamingUsage(value: unknown): void {
@@ -490,10 +549,14 @@ export class TimingTracker {
 		const turnIndex = this.activeTurnIndex ?? -1;
 		let turn = this.turns.get(turnIndex);
 		if (!turn) {
-			turn = { turnIndex, started: at, toolCallIds: [] };
+			turn = { turnIndex, started: at, observedThinkingMs: 0, thinkingObserved: false, toolCallIds: [] };
 			this.turns.set(turnIndex, turn);
 		}
 		if (!turn.firstOutput && messageHasContent(message)) turn.firstOutput = at;
+		if (turn.thinkingStarted) {
+			turn.observedThinkingMs += elapsed(turn.thinkingStarted, at);
+			turn.thinkingStarted = undefined;
+		}
 		const durationMs = elapsed(turn.started, at);
 		const stopReason = typeof message.stopReason === "string" ? message.stopReason : undefined;
 		const normalizedUsage = normalizeUsage(message.usage);
@@ -504,8 +567,19 @@ export class TimingTracker {
 		const provider = typeof message.provider === "string" ? message.provider : undefined;
 		const billingMode = billingModeFor(provider, usage);
 		const cycle = this.ensureCycle(turn.started);
+		const reasoningKnown = usage?.reasoning !== undefined;
+		const reasoningReported = (usage?.reasoning ?? 0) > 0;
+		const thinkingMs = turn.thinkingObserved
+			? turn.observedThinkingMs
+			: reasoningReported && turn.responseStarted
+				? elapsed(turn.responseStarted, turn.firstAction ?? at)
+				: reasoningKnown
+					? 0
+					: undefined;
 		cycle.assistantSteps += 1;
 		cycle.assistantDurationMs += durationMs;
+		if (thinkingMs === undefined) cycle.assistantThinkingComplete = false;
+		else cycle.assistantThinkingMs += thinkingMs;
 		cycle.assistantUsage = addUsageByBilling(cycle.assistantUsage, cycle.billingMode, usage, billingMode);
 		cycle.billingMode = mergeBilling(cycle.billingMode, billingMode);
 		if (stopReason === "aborted") cycle.status = "aborted";
@@ -516,6 +590,8 @@ export class TimingTracker {
 		this.assistantStreaming = false;
 		this.streamingUsage = undefined;
 		const ttftMs = turn.firstOutput ? elapsed(turn.started, turn.firstOutput) : undefined;
+		const responseMs = turn.responseStarted ? elapsed(turn.started, turn.responseStarted) : undefined;
+		const textTtftMs = turn.firstText ? elapsed(turn.started, turn.firstText) : undefined;
 		const streamingMs = turn.firstOutput ? elapsed(turn.firstOutput, at) : undefined;
 		const outputTokensPerSecond =
 			usage && usageFieldReported(usage, "output") && streamingMs && streamingMs > 0
@@ -529,6 +605,9 @@ export class TimingTracker {
 			endedAt: Math.max(turn.started.wallMs, at.wallMs),
 			durationMs,
 			ttftMs,
+			responseMs,
+			textTtftMs,
+			thinkingMs,
 			streamingMs,
 			outputTokensPerSecond,
 			usage,
@@ -547,7 +626,7 @@ export class TimingTracker {
 		const turnIndex = this.activeTurnIndex ?? -1;
 		let turn = this.turns.get(turnIndex);
 		if (!turn) {
-			turn = { turnIndex, started: at, toolCallIds: [] };
+			turn = { turnIndex, started: at, observedThinkingMs: 0, thinkingObserved: false, toolCallIds: [] };
 			this.turns.set(turnIndex, turn);
 		}
 		if (!turn.toolCallIds.includes(toolCallId)) turn.toolCallIds.push(toolCallId);
@@ -658,6 +737,8 @@ export class TimingTracker {
 			const turn: ActiveTurn = {
 				turnIndex,
 				started: { wallMs: first.record.startedAt, monoMs: first.startMono },
+				observedThinkingMs: 0,
+				thinkingObserved: false,
 				toolCallIds: completed.map((item) => item.record.toolCallId),
 			};
 			const record = this.buildStep(turn, completed);
@@ -688,6 +769,8 @@ export class TimingTracker {
 			endedAt: Math.max(cycle.started.wallMs, at.wallMs),
 			durationMs: elapsed(cycle.started, at),
 			assistantDurationMs: cycle.assistantDurationMs,
+			assistantThinkingMs:
+				cycle.assistantSteps > 0 && cycle.assistantThinkingComplete ? cycle.assistantThinkingMs : undefined,
 			toolWallMs: unionDuration(cycle.toolIntervals),
 			toolWorkMs: cycle.toolIntervals.reduce((sum, interval) => sum + Math.max(0, interval.end - interval.start), 0),
 			assistantSteps: cycle.assistantSteps,
@@ -754,6 +837,8 @@ export class TimingTracker {
 			started,
 			sequence: 0,
 			assistantDurationMs: 0,
+			assistantThinkingMs: 0,
+			assistantThinkingComplete: true,
 			assistantSteps: 0,
 			toolCalls: 0,
 			toolFailures: 0,
@@ -931,6 +1016,18 @@ function readableUsageSegments(usage: UsageSnapshot | undefined, billing: Billin
 	return segments;
 }
 
+function compactThinking(record: { thinkingMs?: number; usage?: UsageSnapshot } | undefined): string | undefined {
+	if (!record) return undefined;
+	const duration =
+		record.thinkingMs !== undefined && record.thinkingMs > 0 ? formatDuration(record.thinkingMs) : undefined;
+	const reasoning =
+		record.usage?.reasoning !== undefined && record.usage.reasoning > 0
+			? `${formatCompactTokens(record.usage.reasoning)} tok`
+			: undefined;
+	if (!duration && !reasoning) return undefined;
+	return `think ${[duration, reasoning].filter(Boolean).join("/")}`;
+}
+
 function compactReadable(
 	prefixSegments: string[],
 	usage: UsageSnapshot | undefined,
@@ -946,6 +1043,7 @@ function usageDetails(usage: UsageSnapshot, showCost = true, costLabel = "Cost")
 		`Total:       ${usageDetailField(usage, "totalTokens")}`,
 		`Input:       ${usageDetailField(usage, "input")}`,
 		`Output:      ${usageDetailField(usage, "output")}`,
+		...(usage.reasoning === undefined ? [] : [`Reasoning:   ${integerFormat.format(usage.reasoning)}`]),
 		`Cache read:  ${usageDetailField(usage, "cacheRead")}`,
 		`Cache write: ${usageDetailField(usage, "cacheWrite")}`,
 	];
@@ -1055,10 +1153,15 @@ export function formatTimingRecord(
 
 	if (record.kind === "assistant") {
 		const state = record.stopReason === "aborted" ? " · aborted" : record.stopReason === "error" ? " · failed" : "";
+		const hasSplitLatency =
+			record.responseMs !== undefined || record.textTtftMs !== undefined || record.thinkingMs !== undefined;
 		const timing = [
 			`${timestamp(record.startedAt)}–${timestamp(record.endedAt)}`,
 			formatDuration(record.durationMs),
-			record.ttftMs === undefined ? undefined : `TTFT ${formatDuration(record.ttftMs)}`,
+			record.responseMs === undefined ? undefined : `response ${formatDuration(record.responseMs)}`,
+			record.textTtftMs === undefined ? undefined : `ttft ${formatDuration(record.textTtftMs)}`,
+			compactThinking(record),
+			!hasSplitLatency && record.ttftMs !== undefined ? `first ${formatDuration(record.ttftMs)}` : undefined,
 			record.outputTokensPerSecond === undefined ? undefined : `${record.outputTokensPerSecond.toFixed(1)} tok/s`,
 		]
 			.filter(Boolean)
@@ -1066,11 +1169,14 @@ export function formatTimingRecord(
 		const compact = compactWithUsage(`└ ${timing}${state}`, record.usage, record.billingMode, width, showCost);
 		if (!expanded) return compact;
 		const details = [
-			`Start:       ${timestamp(record.startedAt)}`,
-			`First token: ${record.ttftMs === undefined ? "—" : formatDuration(record.ttftMs)}`,
-			`End:         ${timestamp(record.endedAt)}`,
-			`Duration:    ${formatDuration(record.durationMs)}`,
-			`Streaming:   ${record.streamingMs === undefined ? "—" : formatDuration(record.streamingMs)}`,
+			`Start:        ${timestamp(record.startedAt)}`,
+			`Response:     ${record.responseMs === undefined ? "—" : formatDuration(record.responseMs)}`,
+			`Text TTFT:    ${record.textTtftMs === undefined ? "—" : formatDuration(record.textTtftMs)}`,
+			`Thinking:     ${record.thinkingMs === undefined ? "—" : formatDuration(record.thinkingMs)}`,
+			`First output: ${record.ttftMs === undefined ? "—" : formatDuration(record.ttftMs)}`,
+			`End:          ${timestamp(record.endedAt)}`,
+			`Duration:     ${formatDuration(record.durationMs)}`,
+			`Streaming:    ${record.streamingMs === undefined ? "—" : formatDuration(record.streamingMs)}`,
 			...(record.usage ? detailedUsage(record.usage, record.billingMode, showCost) : ["Tokens:      —"]),
 			...billingDetails(record.billingMode),
 		];
@@ -1082,7 +1188,14 @@ export function formatTimingRecord(
 
 	if (record.kind === "step") {
 		const prefix = ["◆ Step", formatDuration(record.durationMs)];
-		if (record.assistant?.ttftMs !== undefined) prefix.push(`first ${formatDuration(record.assistant.ttftMs)}`);
+		const assistant = record.assistant;
+		const hasSplitLatency =
+			assistant?.responseMs !== undefined || assistant?.textTtftMs !== undefined || assistant?.thinkingMs !== undefined;
+		if (assistant?.responseMs !== undefined) prefix.push(`response ${formatDuration(assistant.responseMs)}`);
+		if (assistant?.textTtftMs !== undefined) prefix.push(`ttft ${formatDuration(assistant.textTtftMs)}`);
+		const thinking = compactThinking(assistant);
+		if (thinking) prefix.push(thinking);
+		if (!hasSplitLatency && assistant?.ttftMs !== undefined) prefix.push(`first ${formatDuration(assistant.ttftMs)}`);
 		if (record.tools.length === 1) prefix.push(`tool ${formatDuration(record.toolWallMs)}`);
 		else if (record.tools.length > 1)
 			prefix.push(`${formatCount(record.tools.length, "tool")} ${formatDuration(record.toolWallMs)}`);
@@ -1097,7 +1210,10 @@ export function formatTimingRecord(
 			`Time:        ${timestamp(record.startedAt)}–${timestamp(record.endedAt)}`,
 			...(record.assistant
 				? [
-						`Model:       ${formatDuration(record.assistant.durationMs)}`,
+						`Model:        ${formatDuration(record.assistant.durationMs)}`,
+						`Response:     ${record.assistant.responseMs === undefined ? "—" : formatDuration(record.assistant.responseMs)}`,
+						`Text TTFT:    ${record.assistant.textTtftMs === undefined ? "—" : formatDuration(record.assistant.textTtftMs)}`,
+						`Thinking:     ${record.assistant.thinkingMs === undefined ? "—" : formatDuration(record.assistant.thinkingMs)}`,
 						`First output: ${record.assistant.ttftMs === undefined ? "—" : formatDuration(record.assistant.ttftMs)}`,
 						`Streaming:    ${record.assistant.streamingMs === undefined ? "—" : formatDuration(record.assistant.streamingMs)}`,
 						`Output speed: ${record.assistant.outputTokensPerSecond === undefined ? "—" : `${record.assistant.outputTokensPerSecond.toFixed(1)} tok/s`}`,
@@ -1179,6 +1295,12 @@ export function formatTimingRecord(
 
 	const title = record.status === "aborted" ? "◆ Aborted" : record.status === "failed" ? "◆ Failed" : "◆ Total";
 	const prefix = [title, formatDuration(record.durationMs), `model ${formatDuration(record.assistantDurationMs)}`];
+	const totalThinking = compactThinking(
+		record.assistantThinkingMs !== undefined || record.assistantUsage
+			? { thinkingMs: record.assistantThinkingMs, usage: record.assistantUsage }
+			: undefined,
+	);
+	if (totalThinking) prefix.push(totalThinking);
 	if (record.toolCalls > 0) prefix.push(`tools ${formatDuration(record.toolWallMs)}`);
 	if (record.status === "success" && record.toolFailures > 0) {
 		prefix.push(`recovered ${formatCount(record.toolFailures, "failure")}`);
@@ -1193,6 +1315,7 @@ export function formatTimingRecord(
 		`Steps:      ${record.assistantSteps}`,
 		`Tools:      ${record.toolCalls}`,
 		`Model time: ${formatDuration(record.assistantDurationMs)}`,
+		`Thinking:   ${record.assistantThinkingMs === undefined ? "—" : formatDuration(record.assistantThinkingMs)}`,
 		`Tool wall:  ${formatDuration(record.toolWallMs)}`,
 		`Tool work:  ${formatDuration(record.toolWorkMs)}`,
 		`Failures:   ${record.toolFailures}`,

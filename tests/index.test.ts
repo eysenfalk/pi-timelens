@@ -243,7 +243,7 @@ test("emits one compact Step for a single tool", async () => {
 	assert.doesNotMatch(h.render(h.appended.at(-1)!), /read/);
 });
 
-test("records TTFT from the first meaningful delta and uses monotonic duration", async () => {
+test("splits response start from strict text TTFT and uses monotonic duration", async () => {
 	const h = harness();
 	await h.emit("session_start");
 	await startTurn(h);
@@ -272,9 +272,60 @@ test("records TTFT from the first meaningful delta and uses monotonic duration",
 	const step = h.appended.find((record) => record.kind === "step");
 	assert.equal(step?.kind, "step");
 	if (step?.kind !== "step" || !step.assistant) return;
+	assert.equal(step.assistant.responseMs, 50);
 	assert.equal(step.assistant.ttftMs, 100);
+	assert.equal(step.assistant.textTtftMs, 100);
 	assert.equal(step.assistant.durationMs, 200);
 	assert.equal(step.assistant.streamingMs, 100);
+});
+
+test("records the event-bounded thinking phase and provider reasoning without inventing text TTFT", async () => {
+	const h = harness();
+	await h.emit("session_start");
+	await startTurn(h);
+	h.setTime(1_040, 50);
+	await h.emit("message_start", { message: { role: "assistant" } });
+	h.setTime(1_050, 60);
+	await h.emit("message_update", {
+		message: { role: "assistant", usage: usage(100, 0) },
+		assistantMessageEvent: { type: "thinking_start" },
+	});
+	h.setTime(1_060, 70);
+	await h.emit("message_update", {
+		message: { role: "assistant", usage: usage(100, 1) },
+		assistantMessageEvent: { type: "thinking_delta", delta: "reason" },
+	});
+	h.setTime(1_110, 120);
+	await h.emit("message_update", {
+		message: { role: "assistant", usage: usage(100, 8) },
+		assistantMessageEvent: { type: "thinking_end" },
+	});
+	h.setTime(1_130, 140);
+	await h.emit("message_update", {
+		message: { role: "assistant", usage: usage(100, 8) },
+		assistantMessageEvent: { type: "toolcall_delta", delta: "{" },
+	});
+	h.setTime(1_150, 160);
+	await h.emit("message_end", {
+		message: {
+			role: "assistant",
+			provider: "openai-codex",
+			stopReason: "toolUse",
+			usage: { ...usage(100, 8), reasoning: 8 },
+			content: [{ type: "toolCall", name: "read" }],
+		},
+	});
+	await h.emit("turn_end", { turnIndex: 0 });
+	h.flushDeferred();
+	const step = h.appended.find((record) => record.kind === "step");
+	assert.equal(step?.kind, "step");
+	if (step?.kind !== "step" || !step.assistant) return;
+	assert.equal(step.assistant.responseMs, 30);
+	assert.equal(step.assistant.thinkingMs, 60);
+	assert.equal(step.assistant.textTtftMs, undefined);
+	assert.equal(step.assistant.usage?.reasoning, 8);
+	assert.match(h.render(step), /response 30ms · think 60ms\/8 tok/);
+	assert.doesNotMatch(h.render(step), /ttft/i);
 });
 
 test("publishes and clears English live footer state", async () => {

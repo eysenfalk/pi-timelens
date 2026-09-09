@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="440" height="540" viewBox="0 0 440 540" role="img" aria-labelledby="title desc" xml:space="preserve">
   <title id="title">Pi TimeLens Step summaries in a real narrow Pi terminal</title>
-  <desc id="desc">A faithful transcript redraw from Pi 0.85.1 at 40 columns. Compact Step and Total summaries reflow into complete timing and token segments without repeating individual tool timing rows.</desc>
-  <metadata>Faithful redraw of tests/fixtures/real-pi-40.txt, selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-09. Raw capture SHA-256: bdde6b120e54bc8be806575bd61dd47308d938e68994821300ea40eb5bcc61d8. Transcript text, wrapping, ordering, measured values, and theme roles are preserved; startup, transient working/status UI, update notice, footer, model identifier, filesystem path, and assistant reasoning are omitted.</metadata>
+  <desc id="desc">A faithful transcript redraw from Pi 0.85.1 at 40 columns. Compact Step and Total summaries keep response latency and strict text TTFT distinct while reflowing complete timing and token segments.</desc>
+  <metadata>Faithful redraw of tests/fixtures/real-pi-40.txt, selected from a real Pi 0.85.1 TUI session at 40 columns on 2026-09-09. Raw capture SHA-256: a0c46032d26db58943fa23ba0ff44987309bd0471930b0f45a3c089db4dcfda2. Transcript text, wrapping, ordering, measured values, and theme roles are preserved; startup, transient working/status UI, update notice, footer, model identifier, filesystem path, and assistant reasoning are omitted.</metadata>
   <rect width="440" height="540" fill="#09090b"/>
 
   <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', monospace" font-size="14" fill="#d4d4d4">
@@ -10,24 +10,24 @@
       <rect x="20" y="18" width="400" height="110" fill="#343541"/>
       <text x="30" y="42">Use the read tool to read auth.ts and</text>
       <text x="30" y="64">config.ts in one parallel tool batch. Do</text>
-      <text x="30" y="86">not call any other tools. Then reply</text>
-      <text x="30" y="108">with exactly: Verified both files.</text>
+       <text x="30" y="86">not call any other tools. Then reply</text>
+       <text x="30" y="108">exactly: Verified both files.</text>
 
       <rect x="20" y="148" width="400" height="46" fill="#283228"/>
       <text x="30" y="175"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> auth.ts</tspan></text>
       <rect x="20" y="204" width="400" height="46" fill="#283228"/>
       <text x="30" y="231"><tspan font-weight="700">read</tspan><tspan fill="#8abeb7"> config.ts</tspan></text>
 
-      <text x="20" y="290" fill="#b5bd68">◆ Step · 3.09s · first 3.06s</text>
-      <text x="20" y="312" fill="#b5bd68">  2 tools 4ms · 1.1k tokens</text>
+       <text x="20" y="290" fill="#b5bd68">◆ Step · 2.68s · response 887ms</text>
+       <text x="20" y="312" fill="#666666">  2 tools 4ms · 1.6k tokens</text>
 
       <text x="20" y="354">Verified both files.</text>
 
-      <text x="20" y="394" fill="#b5bd68">◆ Step · 1.71s · first 1.57s</text>
-      <text x="20" y="416" fill="#b5bd68">  1.1k tokens</text>
+       <text x="20" y="394" fill="#b5bd68">◆ Step · 1.56s · response 943ms</text>
+       <text x="20" y="416" fill="#666666">  ttft 1.43s · 1.6k tokens</text>
 
-      <text x="20" y="458" fill="#b5bd68">◆ Total · 4.80s · model 4.79s</text>
-      <text x="20" y="480" fill="#b5bd68">  tools 4ms · 2.2k tokens</text>
+       <text x="20" y="458" fill="#b5bd68">◆ Total · 4.25s · model 4.24s</text>
+       <text x="20" y="480" fill="#666666">  tools 4ms · 3.2k tokens</text>
     </g>
   </g>
 </svg>

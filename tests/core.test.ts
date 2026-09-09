@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	addUsage,
 	type ClockReading,
 	coerceTimingRecord,
 	formatDuration,
@@ -13,12 +14,13 @@ import {
 } from "../extensions/pi-timelens/core.ts";
 
 const at = (wallMs: number, monoMs = wallMs): ClockReading => ({ wallMs, monoMs });
-const usage = (input: number, output: number, cacheRead = 0, cacheWrite = 0, cost?: number) => ({
+const usage = (input: number, output: number, cacheRead = 0, cacheWrite = 0, cost?: number, reasoning?: number) => ({
 	input,
 	output,
 	cacheRead,
 	cacheWrite,
 	totalTokens: input + output + cacheRead + cacheWrite,
+	reasoning,
 	cost: cost === undefined ? undefined : { input: 0, output: cost, cacheRead: 0, cacheWrite: 0, total: cost },
 });
 
@@ -47,7 +49,7 @@ test("uses monotonic elapsed time when the wall clock moves backward", () => {
 	assert.equal(cycle.durationMs, 160);
 });
 
-test("records TTFT, streaming duration, full usage, speed, and metered cost", () => {
+test("retains legacy first-output timing, streaming duration, usage, speed, and metered cost", () => {
 	const tracker = new TimingTracker();
 	beginTurn(tracker);
 	tracker.markFirstOutput(0, at(1_210, 220));
@@ -67,8 +69,117 @@ test("records TTFT, streaming duration, full usage, speed, and metered cost", ()
 	assert.equal(record.outputTokensPerSecond, 200);
 	assert.deepEqual(record.usage, normalizeUsage(usage(1_500, 200, 8_000, 100, 0.0123)));
 	assert.equal(record.billingMode, "metered");
-	assert.match(formatTimingRecord(record, false)[0]!, /TTFT 200ms · 200\.0 tok\/s/);
+	assert.match(formatTimingRecord(record, false)[0]!, /first 200ms · 200\.0 tok\/s/);
 	assert.match(formatTimingRecord(record, false).join("\n"), /Σ9\.8k ↑1\.5k ↓200 R8k W100 · \$0\.012/);
+});
+
+test("splits response latency, strict text TTFT, thinking time, and reasoning tokens", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.markResponseStart(0, at(1_060, 70));
+	tracker.noteAssistantEvent(0, { type: "thinking_start" }, at(1_070, 80));
+	tracker.noteAssistantEvent(0, { type: "thinking_delta", delta: "reason" }, at(1_090, 100));
+	tracker.noteAssistantEvent(0, { type: "thinking_end" }, at(1_160, 170));
+	tracker.noteAssistantEvent(0, { type: "text_delta", delta: "done" }, at(1_190, 200));
+	const record = tracker.finishAssistant(
+		{
+			provider: "openai-codex",
+			stopReason: "stop",
+			content: [{ type: "text", text: "done" }],
+			usage: usage(100, 30, 500, 0, undefined, 12),
+		},
+		at(1_290, 300),
+	);
+	const step = tracker.finishTurn(0)!;
+	const cycle = tracker.settle(at(1_300, 310))!;
+
+	assert.equal(record.responseMs, 50);
+	assert.equal(record.ttftMs, 80);
+	assert.equal(record.textTtftMs, 180);
+	assert.equal(record.thinkingMs, 90);
+	assert.equal(record.usage?.reasoning, 12);
+	assert.equal(cycle.assistantThinkingMs, 90);
+	const compact = formatTimingRecord(step, false, 160).join("\n");
+	assert.match(compact, /◆ Step · 280ms · response 50ms · ttft 180ms · think 90ms\/12 tok/);
+	assert.doesNotMatch(compact, /first 80ms/);
+	const expanded = formatTimingRecord(step, true, 160).join("\n");
+	assert.match(expanded, /Response:\s+50ms/);
+	assert.match(expanded, /Text TTFT:\s+180ms/);
+	assert.match(expanded, /Thinking:\s+90ms/);
+	assert.match(expanded, /First output:\s+80ms/);
+	assert.match(expanded, /Reasoning:\s+12/);
+	assert.match(formatTimingRecord(cycle, false, 160).join("\n"), /think 90ms\/12 tok/);
+	const narrow = formatTimingRecord(step, false, 40);
+	assert.ok(narrow.every((line) => line.length <= 40));
+	assert.deepEqual(
+		["response 50ms", "ttft 180ms", "think 90ms/12 tok", "630 tokens", "500 cached"].map((segment) =>
+			narrow.join("\n").includes(segment),
+		),
+		[true, true, true, true, true],
+	);
+});
+
+test("keeps strict text TTFT absent on tool-only turns and closes unfinished thinking windows", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.noteAssistantEvent(0, { type: "start" }, at(1_030, 40));
+	tracker.noteAssistantEvent(0, { type: "thinking_start" }, at(1_040, 50));
+	tracker.noteAssistantEvent(0, { type: "thinking_delta", delta: "reason" }, at(1_050, 60));
+	tracker.noteAssistantEvent(0, { type: "toolcall_delta", delta: "{" }, at(1_080, 90));
+	const record = tracker.finishAssistant(
+		{ stopReason: "toolUse", content: [{ type: "toolCall", name: "read" }], usage: usage(20, 5, 0, 0) },
+		at(1_100, 110),
+	);
+	const step = tracker.finishTurn(0)!;
+
+	assert.equal(record.responseMs, 20);
+	assert.equal(record.textTtftMs, undefined);
+	assert.equal(record.thinkingMs, 60);
+	assert.equal(record.usage?.reasoning, undefined);
+	const compact = formatTimingRecord(step, false, 160).join("\n");
+	assert.match(compact, /response 20ms · think 60ms/);
+	assert.doesNotMatch(compact, /ttft|reasoning/i);
+});
+
+test("uses a response-to-action phase only when positive reasoning is the sole thinking evidence", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.markResponseStart(0, at(1_020, 30));
+	tracker.noteAssistantEvent(0, { type: "text_delta", delta: "done" }, at(1_090, 100));
+	const record = tracker.finishAssistant(
+		{ content: [{ type: "text", text: "done" }], usage: usage(20, 15, 0, 0, undefined, 10) },
+		at(1_110, 120),
+	);
+
+	assert.equal(record.thinkingMs, 70);
+	assert.match(formatTimingRecord(tracker.finishTurn(0)!, false, 160).join("\n"), /think 70ms\/10 tok/);
+});
+
+test("treats provider-reported zero reasoning as known without adding a compact thinking segment", () => {
+	const tracker = new TimingTracker();
+	beginTurn(tracker);
+	tracker.markResponseStart(0, at(1_030, 40));
+	const record = tracker.finishAssistant(
+		{ content: [{ type: "text", text: "done" }], usage: usage(20, 5, 0, 0, undefined, 0) },
+		at(1_100, 110),
+	);
+	const step = tracker.finishTurn(0)!;
+	const cycle = tracker.settle(at(1_110, 120))!;
+
+	assert.equal(record.thinkingMs, 0);
+	assert.equal(cycle.assistantThinkingMs, 0);
+	assert.doesNotMatch(formatTimingRecord(step, false, 160).join("\n"), /think/);
+	assert.match(formatTimingRecord(step, true, 160).join("\n"), /Thinking:\s+0ms/);
+});
+
+test("preserves reasoning only when every aggregated provider usage reports it", () => {
+	const withReasoning = normalizeUsage(usage(10, 4, 0, 0, undefined, 3));
+	const withoutReasoning = normalizeUsage(usage(5, 2));
+	assert.equal(withReasoning?.reasoning, 3);
+	assert.equal(normalizeUsage(usage(5, 2, 0, 0, undefined, 0))?.reasoning, 0);
+	assert.equal(withoutReasoning?.reasoning, undefined);
+	assert.equal(addUsage(withReasoning, normalizeUsage(usage(5, 2, 0, 0, undefined, 1)))?.reasoning, 4);
+	assert.equal(addUsage(withReasoning, withoutReasoning)?.reasoning, undefined);
 });
 
 test("keeps subscription mode out of compact output without fabricating cost", () => {

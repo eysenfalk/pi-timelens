@@ -3,18 +3,18 @@
 # Sanitized omissions: startup UI, transient working/status UI, update notice,
 # footer, model identifier, filesystem path, and assistant reasoning. Transcript
 # text, TimeLens values, order, and line wrapping are unchanged.
-# Raw capture SHA-256: 154d43a182362bb889c831942f1f25988c0939e9c41acd4dab8be9ea9d9de97b
+# Raw capture SHA-256: a8f3ea3b0c8cbc971eef8517826c9d5366f050854e4c2a5765d5429124bd23c3
 
-Use the read tool to read auth.ts and config.ts in one parallel tool batch. Do not call any other tools. Then reply with
+Use the read tool to read auth.ts and config.ts in one parallel tool batch. Do not call any other tools. Then reply
 exactly: Verified both files.
 
 read auth.ts
 read config.ts
 
-◆ Step · 9.51s · first 9.38s · 2 tools 5ms · 1.1k tokens
+◆ Step · 3.83s · response 830ms · 2 tools 14ms · 1.6k tokens
 
 Verified both files.
 
-◆ Step · 1.79s · first 1.44s · 1.1k tokens
+◆ Step · 1.97s · response 432ms · ttft 1.77s · 1.6k tokens · 1.4k cached
 
-◆ Total · 11.3s · model 11.3s · tools 5ms · 2.2k tokens
+◆ Total · 5.81s · model 5.78s · tools 14ms · 3.2k tokens · 1.4k cached

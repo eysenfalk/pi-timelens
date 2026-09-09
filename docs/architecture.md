@@ -23,8 +23,8 @@ sequenceDiagram
     participant Consumer as Optional footer
 
     Pi->>Adapter: input / agent / turn / message / tool events
-    Adapter->>Core: monotonic clock readings + bounded metadata
-    Core-->>Adapter: assistant + tool contributions
+    Adapter->>Core: monotonic readings + bounded event types / usage
+    Core-->>Adapter: response + thinking + assistant + tool contributions
     Pi->>Adapter: turn_end
     Adapter->>Core: finish Step
     Core-->>Adapter: immutable Step record
@@ -37,7 +37,7 @@ sequenceDiagram
 
 ## Persistence schema
 
-New entries use schema version 3. A Step owns one optional assistant contribution plus ordered tool contributions, aggregate usage, billing, status, elapsed duration, tool wall time, and cumulative tool work. Compact rendering intentionally omits subscription labels, while the persisted billing field remains available to expanded diagnostics, summaries, and safe exports. Stable cycle, sequence, turn, and tool-call identities remain available for reports and safe exports.
+New entries use schema version 3. A Step owns one optional assistant contribution plus ordered tool contributions, aggregate usage, billing, status, elapsed duration, tool wall time, and cumulative tool work. Additive optional assistant fields distinguish response-stream latency, strict text TTFT, legacy first-output latency, and the event-bounded reasoning phase before the first text/tool-call delta. Provider-reported reasoning tokens remain an optional usage subset rather than a derived total. Compact rendering intentionally omits subscription labels, while the persisted billing field remains available to expanded diagnostics, summaries, and safe exports. Stable cycle, sequence, turn, and tool-call identities remain available for reports and safe exports.
 
 Version-1 and version-2 records are coerced conservatively for replay. Existing sessions are never rewritten, and unavailable fields remain unavailable rather than becoming fabricated zeroes.
 
@@ -57,7 +57,7 @@ Deferred appends are cancelled on shutdown and session replacement, preventing s
 
 ## Test strategy
 
-- Pure core tests cover clocks, first-output latency, Step aggregation, usage presence, direct and nested model-backed tool accounting, concurrency math, failure recovery, aborts, responsive formatting, and V1/V2 compatibility.
+- Pure core tests cover clocks, response latency, strict text TTFT, exact thinking-event windows, provider-evidenced fallback phases, reasoning-token presence and aggregation, legacy first-output compatibility, Step aggregation, direct and nested model-backed tool accounting, concurrency math, failure recovery, aborts, responsive formatting, and V1/V2 compatibility.
 - Runtime tests drive synthetic Pi lifecycle events, timers, session replacement, settings, and entry ordering.
 - Reporting tests cover branch selection, de-duplication, hostile unknown fields, summary math, JSON, and CSV.
 - Package checks inspect the npm tarball allowlist and forbid runtime install hooks.

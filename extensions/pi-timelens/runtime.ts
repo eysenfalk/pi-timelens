@@ -111,6 +111,7 @@ export function registerMessageTiming(
 		tools: summary.tools,
 		usage: summary.usage,
 		cost: summary.cost,
+		billingMode: summary.billing,
 		failures: summary.failures,
 		aborted: summary.aborted,
 	});

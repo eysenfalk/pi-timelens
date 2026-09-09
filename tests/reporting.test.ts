@@ -141,6 +141,7 @@ test("exports Steps and nested members as valid CSV rows", () => {
 	const lines = csv.trim().split("\n");
 	assert.equal(lines.length, 6); // header + Step + nested assistant + 2 tools + cycle
 	assert.match(lines[0]!, /stepId,parentStepId/);
+	assert.match(lines[0]!, /status,billingMode,input/);
 	assert.match(csv, /cycle-1:turn-0/);
 	assert.doesNotMatch(csv, /secret/);
 });
@@ -318,7 +319,12 @@ test("omits subscription costs from direct and nested exports", () => {
 	const csv = exportTimingCsv([subscriptionAssistant, subscriptionTool, subscriptionStep]);
 
 	assert.doesNotMatch(exported, /"cost"/);
+	assert.match(exported, /"billingMode": "subscription"/);
 	assert.doesNotMatch(csv, /0\.99/);
+	const csvLines = csv.trim().split("\n");
+	const billingIndex = csvLines[0]!.split(",").indexOf("billingMode");
+	assert.ok(billingIndex >= 0);
+	assert.ok(csvLines.slice(1).every((line) => line.split(",")[billingIndex] === "subscription"));
 });
 
 test("mixed summaries report only the metered subtotal", () => {

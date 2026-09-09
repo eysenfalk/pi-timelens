@@ -291,6 +291,33 @@ test("publishes and clears English live footer state", async () => {
 	assert.equal(h.statuses.at(-1)?.content, undefined);
 });
 
+test("publishes session billing scope for footer integrations", async () => {
+	const h = harness();
+	await h.emit("session_start");
+	await startTurn(h);
+	h.setTime(1_200, 220);
+	await h.emit("message_end", {
+		message: {
+			role: "assistant",
+			provider: "openai-codex",
+			model: "gpt-test",
+			stopReason: "stop",
+			usage: {
+				...usage(100, 20),
+				cost: { input: 0.4, output: 0.59, cacheRead: 0, cacheWrite: 0, total: 0.99 },
+			},
+			content: [],
+		},
+	});
+	await h.emit("turn_end", { turnIndex: 0 });
+	h.flushDeferred();
+	await h.emit("agent_settled");
+	h.flushDeferred();
+	const settled = [...h.stateEvents].reverse().find((event: any) => event.lastCycle);
+	assert.equal((settled as any)?.session?.billingMode, "subscription");
+	assert.equal((settled as any)?.session?.cost, undefined);
+});
+
 test("measures extension UI wait inside the settled cycle", async () => {
 	const h = harness();
 	await h.emit("session_start");

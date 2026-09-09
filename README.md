@@ -12,7 +12,7 @@ Local timing and token observability for the [Pi coding agent](https://github.co
 
 </div>
 
-Pi TimeLens makes agent latency legible without repeating Pi's transcript. Each model turn and its tools become one concise **Step** with elapsed time, first-output latency, tool wall time, tokens, and truthful billing. Each request closes with one **Total** that answers whether time went to the model or tools. Exact timestamps, throughput, per-tool timing, and full token categories remain one expansion away. Everything stays local, display-only, and outside model context.
+Pi TimeLens makes agent latency legible without repeating Pi's transcript. Each model turn and its tools become one concise **Step** with elapsed time, first-output latency, tool wall time, tokens, and provider-reported metered cost when relevant. Each request closes with one **Total** that answers whether time went to the model or tools. Exact timestamps, billing scope, throughput, per-tool timing, and full token categories remain one expansion away. Everything stays local, display-only, and outside model context.
 
 > [!IMPORTANT]
 > This public repository contains the reviewed `1.0.0` release candidate. npm publication remains separately gated; the registry install command below becomes available with that release.
@@ -45,29 +45,29 @@ _Faithful transcript redraws from real Pi 0.85.1 sessions at desktop and narrow 
 | Lens | What it reveals |
 | --- | --- |
 | Live | Current phase and elapsed time while Pi is working |
-| Step | One model turn plus its tools: duration, first output, tool wall time, provider-reported tokens, and truthful billing |
+| Step | One model turn plus its tools: duration, first output, tool wall time, provider-reported tokens, and metered cost when present |
 | Total | Full request duration split into model and tool time, with aggregate usage and recovery status |
 | Details | Exact timestamps, streaming time, output speed, cumulative tool work, ordered tool timings, full token categories, model, and stop reason |
 | Session | Current-branch summary, timeline, safe JSON/CSV export, and content-free footer telemetry |
 
 ```text
 ◆ Step · 12.1s · first 5.57s · 7 tools 56ms
-  282k tokens · 275k cached · subscription
+  282k tokens · 275k cached
 
 ◆ Total · 20.2s · model 19.4s · tools 119ms
-  368k tokens · 360k cached · subscription
+  368k tokens · 360k cached
 ```
 
 Pi's native tool cards already show which tool ran, its target, and its result. Compact TimeLens output therefore does not repeat `read`, `edit`, or every member of a parallel group. A single tool is folded into its Step just like a parallel group:
 
 ```text
 ◆ Step · 8.60s · first 5.21s · tool 56ms
-  86k tokens · 85k cached · subscription
+  86k tokens · 85k cached
 ```
 
-For a metered Step, the provider-reported price appears instead of a subscription label. When metered and subscription sources mix, TimeLens shows only the metered subtotal plus `subscription`. Ordinary tools add no invented token usage; model-backed tools contribute only usage they report, exactly once, to the whole Step.
+Compact Steps and Totals omit redundant subscription labels. Subscription-backed usage still shows tokens and cache data without a fabricated price. Metered usage shows only the provider-reported cost; mixed sources show only the metered subtotal. Ordinary tools add no invented token usage; model-backed tools contribute only usage they report, exactly once, to the whole Step.
 
-Press `Ctrl+O` to reveal the model and individual tool contributions, exact times, `wall` versus cumulative `work`, output tokens/s, and complete input/output/cache categories. Missing provider fields stay unavailable rather than becoming fabricated zeros.
+Press `Ctrl+O` to reveal billing mode, the model and individual tool contributions, exact times, `wall` versus cumulative `work`, output tokens/s, and complete input/output/cache categories. Missing provider fields stay unavailable rather than becoming fabricated zeros.
 
 ## Commands
 
@@ -167,7 +167,7 @@ Parallel tools overlap. Expanded `wall` measures elapsed time across the union o
 <details>
 <summary>What does a Step's token and price total include?</summary>
 
-The assistant call and any model-backed tools in that turn, using only provider-reported values. Ordinary tools add time but no token usage. Mixed billing includes all reported tokens while showing only the metered subtotal plus a subscription label.
+The assistant call and any model-backed tools in that turn, using only provider-reported values. Ordinary tools add time but no token usage. Mixed billing includes all reported tokens while compact output shows only the metered subtotal; expand the record or use `/timing summary` to inspect billing scope.
 
 </details>
 

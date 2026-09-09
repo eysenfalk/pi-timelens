@@ -38,7 +38,7 @@ Before implementation, write observable invariants. For timing work these normal
 - one timing owner and no duplicate registrations;
 - provider-reported usage only;
 - correct source order and aggregate scope;
-- truthful subscription versus metered cost display;
+- compact subscription-label omission with truthful metered cost and expanded billing scope;
 - complete success, failure, retry, cancellation, and settled-state behavior;
 - every rendered line fitting the width passed to Pi's `render(width)` contract;
 - no intended runtime network, subprocess, model-context injection, or install hook in the runtime package.
@@ -65,7 +65,7 @@ npm run smoke:packed
 npm run benchmark
 ```
 
-`npm run check` executes Biome, strict TypeScript, the complete test suite, Markdown/media checks, workflow-contract checks, and npm package inspection. The Step-summary candidate passed 54 tests; that count is evidence for the referenced commit, not a permanent promise.
+`npm run check` executes Biome, strict TypeScript, the complete test suite, Markdown/media checks, workflow-contract checks, and npm package inspection. The exact test count belongs in the evaluation evidence for a reviewed commit, not as a permanent promise in this guide.
 
 ## 3. Treat the npm artifact as the product
 
@@ -132,6 +132,7 @@ Assert the actual behavior, not only visual resemblance:
 - both reads belong to one Step in source order;
 - compact output does not repeat member timing rows already represented by Pi's native tool cards;
 - assistant and model-backed-tool usage appears once at Step scope;
+- compact Steps and Totals contain no `sub` or `subscription` label, while expanded records retain billing scope;
 - the final Total is settled and no live status remains;
 - unrelated startup or renderer errors are absent;
 - every visible line fits 120 columns;
